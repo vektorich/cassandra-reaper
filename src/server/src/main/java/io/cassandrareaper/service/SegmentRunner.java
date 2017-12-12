@@ -147,7 +147,8 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
   private static void postpone(AppContext context, RepairSegment segment, Optional<RepairUnit> repairUnit) {
     LOG.info("Postponing segment {}", segment.getId());
     try {
-      context.storage.updateRepairSegment(
+      updateRepairSegment(
+          context,
           segment
               .with()
               .state(RepairSegment.State.NOT_STARTED)
@@ -247,7 +248,8 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
                   .endTime(DateTime.now())
                   .build(segment.getRunId()));
           repairRunner.killAndCleanupRunner();
-          context.storage.updateRepairSegment(
+          updateRepairSegment(
+              context,
               segment
                   .with()
                   .state(RepairSegment.State.DONE)
@@ -270,8 +272,10 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
 
           if (commandId == 0) {
             LOG.info("Nothing to repair for keyspace {}", keyspace);
-            context.storage.updateRepairSegment(
+            updateRepairSegment(
+                context,
                 segment.with().coordinatorHost(coordinator.getHost()).state(RepairSegment.State.DONE).build(segmentId));
+
             SEGMENT_RUNNERS.remove(segment.getId());
             closeJmxConnection(Optional.fromNullable(coordinator));
             return true;
@@ -298,7 +302,8 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
 
   private void processTriggeredSegment(final RepairSegment segment, final JmxProxy coordinator) {
 
-    context.storage.updateRepairSegment(
+    updateRepairSegment(
+        context,
         segment.with().coordinatorHost(coordinator.getHost()).startTime(DateTime.now()).build(segmentId));
 
     repairRunner.updateLastEvent(
@@ -715,7 +720,8 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
       case START:
         try {
           if (renewLead()) {
-            context.storage.updateRepairSegment(
+            updateRepairSegment(
+                context,
                 currentSegment.with().state(RepairSegment.State.RUNNING).build(segmentId));
 
             LOG.debug("updated segment {} with state {}", segmentId, RepairSegment.State.RUNNING);
@@ -740,7 +746,8 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
                 segmentId,
                 repairNumber);
 
-            context.storage.updateRepairSegment(
+            updateRepairSegment(
+                context,
                 currentSegment.with().state(RepairSegment.State.DONE).endTime(DateTime.now()).build(segmentId));
             break;
           }
@@ -784,7 +791,8 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
       case STARTED:
         try {
           if (renewLead()) {
-            context.storage.updateRepairSegment(
+            updateRepairSegment(
+                context,
                 currentSegment.with().state(RepairSegment.State.RUNNING).build(segmentId));
 
             LOG.debug("updated segment {} with state {}", segmentId, RepairSegment.State.RUNNING);
@@ -809,7 +817,8 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
                 segmentId,
                 repairNumber);
 
-            context.storage.updateRepairSegment(
+            updateRepairSegment(
+                context,
                 currentSegment.with().state(RepairSegment.State.DONE).endTime(DateTime.now()).build(segmentId));
 
             break;
@@ -984,6 +993,16 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
             && tables.isEmpty())); // if we have a blacklist, we should have tables in the output.
 
     return tables;
+  }
+
+  private static boolean updateRepairSegment(AppContext context, RepairSegment segment) {
+    try {
+      segment.checkState();
+      return context.storage.updateRepairSegment(segment);
+    } catch (IllegalStateException ex) {
+      return context.storage.updateRepairSegment(segment.reset());
+      // XXX CassandraStorage still needs to blank endTime
+    }
   }
 
   private class BusyHostsInitializer extends LazyInitializer<Set<String>> {

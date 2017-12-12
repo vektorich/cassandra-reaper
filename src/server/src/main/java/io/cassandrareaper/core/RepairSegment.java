@@ -102,10 +102,26 @@ public final class RepairSegment {
     return new Builder(this);
   }
 
+  public RepairSegment reset() {
+    Builder builder = with().state(RepairSegment.State.NOT_STARTED);
+    builder.startTime = null;
+    builder.endTime = null;
+    return new RepairSegment(builder, id);
+  }
+
   public enum State {
     NOT_STARTED,
     RUNNING,
     DONE
+  }
+
+  public void checkState() throws IllegalStateException {
+    Preconditions.checkState(null != startTime || null == endTime, "if endTime is set, so must startTime be set");
+    Preconditions.checkState(null == endTime || State.DONE == state, "endTime can only be set if segment is DONE");
+
+    Preconditions.checkState(
+        null != startTime || State.NOT_STARTED == state,
+        "startTime must be set if segment is RUNNING or DONE");
   }
 
   public static final class Builder {
@@ -179,12 +195,6 @@ public final class RepairSegment {
     public RepairSegment build(@Nullable UUID segmentId) {
       // a null segmentId is a special case where the storage uses a sequence for it
       Preconditions.checkNotNull(runId);
-      Preconditions.checkState(null != startTime || null == endTime, "if endTime is set, so must startTime be set");
-      Preconditions.checkState(null == endTime || State.DONE == state, "endTime can only be set if segment is DONE");
-
-      Preconditions.checkState(
-          null != startTime || State.NOT_STARTED == state,
-          "startTime must be set if segment is RUNNING or DONE");
 
       return new RepairSegment(this, segmentId);
     }
