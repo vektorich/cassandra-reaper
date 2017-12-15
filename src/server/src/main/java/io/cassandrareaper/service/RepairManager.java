@@ -22,6 +22,7 @@ import io.cassandrareaper.core.RepairUnit;
 import io.cassandrareaper.jmx.JmxProxy;
 import io.cassandrareaper.storage.IDistributedStorage;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -141,12 +142,29 @@ public final class RepairManager {
     }
   }
 
-  void abortSegments(Collection<RepairSegment> runningSegments, RepairRun repairRun) {
+  public RepairSegment abortSegment(UUID repairRunId, UUID segmentId) {
+    RepairSegment segment = context.storage.getRepairSegment(repairRunId, segmentId).get();
+    RepairRun repairRun = context.storage.getRepairRun(repairRunId).get();
+    if (null == segment.getCoordinatorHost() || RepairSegment.State.DONE == segment.getState()) {
+      SegmentRunner.postponeSegment(context, segment);
+    } else {
+      abortSegments(Arrays.asList(segment), repairRun, true);
+    }
 
+    return context.storage.getRepairSegment(repairRunId, segmentId).get();
+  }
+
+  void abortSegments(Collection<RepairSegment> runningSegments, RepairRun repairRun) {
+    abortSegments(runningSegments, repairRun, false);
+  }
+
+  public void abortSegments(Collection<RepairSegment> runningSegments,
+                            RepairRun repairRun,
+                            boolean forced) {
     RepairUnit repairUnit = context.storage.getRepairUnit(repairRun.getRepairUnitId()).get();
     for (RepairSegment segment : runningSegments) {
       UUID leaderElectionId = repairUnit.getIncrementalRepair() ? repairRun.getId() : segment.getId();
-      if (takeLead(context, leaderElectionId) || renewLead(context, leaderElectionId)) {
+      if (forced || takeLead(context, leaderElectionId) || renewLead(context, leaderElectionId)) {
         // refresh segment once we're inside leader-election
         segment = context.storage.getRepairSegment(repairRun.getId(), segment.getId()).get();
         if (RepairSegment.State.RUNNING == segment.getState()) {
