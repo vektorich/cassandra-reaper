@@ -145,6 +145,10 @@ public final class RepairManager {
   public RepairSegment abortSegment(UUID repairRunId, UUID segmentId) {
     RepairSegment segment = context.storage.getRepairSegment(repairRunId, segmentId).get();
     RepairRun repairRun = context.storage.getRepairRun(repairRunId).get();
+    if (context.storage instanceof IDistributedStorage) {
+      ((IDistributedStorage) context.storage).forceReleaseLead(segmentId);
+      ((IDistributedStorage) context.storage).takeLead(segmentId);
+    }
     if (null == segment.getCoordinatorHost() || RepairSegment.State.DONE == segment.getState()) {
       SegmentRunner.postponeSegment(context, segment);
     } else {

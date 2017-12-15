@@ -125,6 +125,7 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
   private PreparedStatement takeLeadPrepStmt;
   private PreparedStatement renewLeadPrepStmt;
   private PreparedStatement releaseLeadPrepStmt;
+  private PreparedStatement forceReleaseLeadPrepStmt;
   private PreparedStatement getRunningReapersCountPrepStmt;
   private PreparedStatement saveHeartbeatPrepStmt;
   private PreparedStatement storeNodeMetricsPrepStmt;
@@ -262,6 +263,7 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
                 + "WHERE leader_id = ? IF reaper_instance_id = ?")
         .setIdempotent(false);
     releaseLeadPrepStmt = session.prepare("DELETE FROM leader WHERE leader_id = ? IF reaper_instance_id = ?");
+    forceReleaseLeadPrepStmt = session.prepare("DELETE FROM leader WHERE leader_id = ?");
     getRunningReapersCountPrepStmt = session.prepare("SELECT count(*) as nb_reapers FROM running_reapers");
     saveHeartbeatPrepStmt = session
         .prepare(
@@ -1041,6 +1043,13 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
       assert false : "Could not release lead on segment " + leaderId;
       LOG.error("Could not release lead on segment {}", leaderId);
     }
+  }
+
+  @Override
+  public void forceReleaseLead(UUID leaderId) {
+    session.execute(forceReleaseLeadPrepStmt.bind(leaderId));
+
+    LOG.debug("Force released lead on segment {}", leaderId);
   }
 
   private boolean hasLeadOnSegment(UUID leaderId) {
