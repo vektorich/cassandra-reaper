@@ -21,9 +21,6 @@ import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairUnit;
-import io.cassandrareaper.service.RepairManager;
-import io.cassandrareaper.service.RepairRunner;
-import io.cassandrareaper.service.RingRange;
 import io.cassandrareaper.storage.IDistributedStorage;
 import io.cassandrareaper.storage.IStorage;
 
@@ -94,7 +91,8 @@ public final class RepairManagerTest {
     final RepairSegment segment =
         RepairSegment.builder(new RingRange("-1", "1"), cf.getId())
             .withRunId(run.getId())
-            .build(UUIDs.timeBased());
+            .withId(UUIDs.timeBased())
+            .build();
 
     context.repairManager.repairRunners.put(run.getId(), mock(RepairRunner.class));
 
@@ -161,7 +159,8 @@ public final class RepairManagerTest {
     final RepairSegment segment =
         RepairSegment.builder(new RingRange("-1", "1"), cf.getId())
             .withRunId(run.getId())
-            .build(UUIDs.timeBased());
+            .withId(UUIDs.timeBased())
+            .build();
 
     context.repairManager.repairRunners.put(run.getId(), mock(RepairRunner.class));
 
@@ -230,7 +229,8 @@ public final class RepairManagerTest {
     final RepairSegment segment =
         RepairSegment.builder(new RingRange("-1", "1"), cf.getId())
             .withRunId(run.getId())
-            .build(UUIDs.timeBased());
+            .withId(UUIDs.timeBased())
+            .build();
 
     context.repairManager.repairRunners.put(run.getId(), mock(RepairRunner.class));
 
@@ -296,7 +296,8 @@ public final class RepairManagerTest {
     final RepairSegment segment =
         RepairSegment.builder(new RingRange("-1", "1"), cf.getId())
             .withRunId(run.getId())
-            .build(UUIDs.timeBased());
+            .withId(UUIDs.timeBased())
+            .build();
 
     Mockito.doNothing().when(context.repairManager).abortSegments(any(), any());
     Mockito.doReturn(run).when(context.repairManager).startRepairRun(run);
