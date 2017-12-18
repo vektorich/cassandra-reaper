@@ -33,7 +33,7 @@ const NavBar = React.createClass({
               </div>
               </div>
               <div className="col-lg-4">
-                <span className="navbar-brand" style={floatRight}><Button href="https://github.com/thelastpickle/cassandra-reaper/issues/new?body=**Spotted on 1.1.0-SNAPSHOT (daefd18)**" bsStyle="warning" bsSize="xsmall">Report a bug</Button>
+                <span className="navbar-brand" style={floatRight}><Button href="https://github.com/thelastpickle/cassandra-reaper/issues/new?body=**Spotted on 1.1.0-SNAPSHOT (d97950a)**" bsStyle="warning" bsSize="xsmall">Report a bug</Button>
               </span>
             </div>
             <Modal show={this.state.showModal} onHide={this.close}>
@@ -42,9 +42,9 @@ const NavBar = React.createClass({
                 </Modal.Header>
                 <Modal.Body>
                   <h4>Git commit :</h4>
-                  <p><a href="https://github.com/thelastpickle/cassandra-reaper/commit/daefd18" target="_blank">https://github.com/thelastpickle/cassandra-reaper/commit/daefd18</a></p>
+                  <p><a href="https://github.com/thelastpickle/cassandra-reaper/commit/d97950a" target="_blank">https://github.com/thelastpickle/cassandra-reaper/commit/d97950a</a></p>
                   <h4>Build date :</h4>
-                  <p>2017-12-15 12:59:34</p>
+                  <p>2017-12-18 11:06:53</p>
                 </Modal.Body>
                 <Modal.Footer>
                   <Button onClick={this.close}>Close</Button>
