@@ -64,6 +64,9 @@ public final class ReaperApplicationConfiguration extends Configuration {
   private Boolean useAddressTranslator;
 
   @JsonProperty
+  private AddressTranslatorConfiguration addressTranslatorConfiguration;
+
+  @JsonProperty
   @NotNull
   private Integer repairRunThreadCount;
 
@@ -268,6 +271,14 @@ public final class ReaperApplicationConfiguration extends Configuration {
     this.useAddressTranslator = useAddressTranslator;
   }
 
+  public AddressTranslatorConfiguration getAddressTranslatorConfiguration() {
+    return addressTranslatorConfiguration;
+  }
+
+  public void setAddressTranslatorConfiguration(AddressTranslatorConfiguration addressTranslatorConfiguration) {
+    this.addressTranslatorConfiguration = addressTranslatorConfiguration;
+  }
+
   public boolean useAddressTranslator() {
     return this.useAddressTranslator != null ? useAddressTranslator : false;
   }
@@ -325,6 +336,7 @@ public final class ReaperApplicationConfiguration extends Configuration {
       return password;
     }
   }
+
 
   public static final class AutoSchedulingConfiguration {
 
@@ -422,5 +434,45 @@ public final class ReaperApplicationConfiguration extends Configuration {
     LOCAL,
     /* Each datacenter requires at minimum one reaper instance that has jmx access to all nodes in that datacenter */
     EACH
+  }
+
+  public static final class AddressTranslatorConfiguration {
+
+    @JsonProperty
+    private String appendDomain;
+
+    @JsonProperty
+    private String appendInsteadOfReverse;
+
+    @JsonProperty
+    private String removeDomain;
+
+    public void setappendDomain(String appendDomain) {
+      this.appendDomain = appendDomain;
+    }
+
+    public String appendDomain() {
+      return this.appendDomain;
+    }
+
+
+    public void setAppendInsteadOfReverse(String appendInsteadOfReverse) {
+      this.appendInsteadOfReverse = appendInsteadOfReverse;
+    }
+
+    public String appendInsteadOfReverse() {
+      return this.appendInsteadOfReverse;
+    }
+
+    public void setRemoveDomain(String removeDomain) {
+      this.removeDomain = removeDomain;
+    }
+
+    public String removeDomain() {
+      return this.removeDomain;
+    }
+
+
+
   }
 }
