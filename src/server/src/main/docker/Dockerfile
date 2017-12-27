@@ -15,8 +15,6 @@
 
 FROM openjdk:8-jre-alpine
 
-ARG SHADED_JAR
-
 ENV REAPER_SEGMENT_COUNT=200 \
     REAPER_REPAIR_PARALELLISM=DATACENTER_AWARE \
     REAPER_REPAIR_INTENSITY=0.9 \
@@ -101,7 +99,7 @@ RUN addgroup -S reaper && \
 VOLUME /var/lib/cassandra-reaper
 VOLUME /etc/cassandra-reaper/shiro
 
-ADD ${SHADED_JAR} /usr/local/lib/cassandra-reaper.jar
+ADD cassandra-reaper.jar /usr/local/lib/cassandra-reaper.jar
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["cassandra-reaper"]
