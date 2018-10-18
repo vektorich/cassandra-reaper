@@ -111,6 +111,7 @@ public class CustomEC2MultiRegionAddressTranslator {
       // InetAddress#getHostName() is supposed to perform a reverse DNS lookup, but for some reason it doesn't work
       // within the same EC2 region (it returns the IP address itself).
       // We use an alternate implementation:
+
       String domainName;
       if (addressTranslatorConfiguration.appendInsteadOfReverse() != null) {
         domainName = lookupPtrRecord(
@@ -124,12 +125,14 @@ public class CustomEC2MultiRegionAddressTranslator {
       }
 
       // Waze - remove .pub$ from domain name, by Sasha <sashagl@google.com>
+
       if (addressTranslatorConfiguration.removeDomain() != null) {
         int sufIndex = domainName.lastIndexOf(addressTranslatorConfiguration.removeDomain());
         if (sufIndex > 0) {
           domainName = domainName.substring(0, sufIndex);
         }
       }
+
 
       if (addressTranslatorConfiguration.appendDomain() != null) {
         domainName += addressTranslatorConfiguration.appendDomain();
@@ -165,4 +168,5 @@ public class CustomEC2MultiRegionAddressTranslator {
       LOG.warn("Error closing translator", e);
     }
   }
+
 }

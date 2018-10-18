@@ -325,6 +325,14 @@ public final class ReaperApplicationConfiguration extends Configuration {
     return this.useAddressTranslator != null ? useAddressTranslator : false;
   }
 
+  public void setAddressTranslatorRemoveDomain(String addressTranslatorRemoveDomain) {
+    this.addressTranslatorRemoveDomain = addressTranslatorRemoveDomain;
+  }
+
+  public String addressTranslatorRemoveDomain() {
+    return this.addressTranslatorRemoveDomain;
+  }
+
   @JsonProperty("cassandra")
   public CassandraFactory getCassandraFactory() {
     return cassandra;
