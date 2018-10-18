@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -22,13 +25,11 @@ import io.cassandrareaper.core.RepairUnit;
 import io.cassandrareaper.jmx.JmxProxy;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
@@ -106,36 +107,31 @@ public final class ClusterRepairScheduler {
   }
 
   private void createRepairSchedule(Cluster cluster, String keyspace, DateTime nextActivationTime) {
-    try {
-      boolean incrementalRepair = context.config.getIncrementalRepair();
+    boolean incrementalRepair = context.config.getIncrementalRepair();
 
-      RepairSchedule repairSchedule =
-          repairScheduleService.storeNewRepairSchedule(
-              cluster,
-              repairUnitService.getNewOrExistingRepairUnit(
-                  cluster,
-                  keyspace,
-                  Collections.emptySet(),
-                  incrementalRepair,
-                  Collections.emptySet(),
-                  Collections.emptySet(),
-                  Collections.emptySet()),
-              context.config.getScheduleDaysBetween(),
-              nextActivationTime,
-              REPAIR_OWNER,
-              context.config.getSegmentCountPerNode(),
-              context.config.getRepairParallelism(),
-              context.config.getRepairIntensity());
+    RepairUnit.Builder builder = RepairUnit.builder()
+        .clusterName(cluster.getName())
+        .keyspaceName(keyspace)
+        .incrementalRepair(incrementalRepair)
+        .repairThreadCount(context.config.getRepairThreadCount());
 
-      LOG.info("Scheduled repair created: {}", repairSchedule);
-    } catch (ReaperException e) {
-      throw Throwables.propagate(e);
-    }
+    RepairSchedule repairSchedule = repairScheduleService.storeNewRepairSchedule(
+            cluster,
+            repairUnitService.getOrCreateRepairUnit(cluster, builder),
+            context.config.getScheduleDaysBetween(),
+            nextActivationTime,
+            REPAIR_OWNER,
+            context.config.getSegmentCountPerNode(),
+            context.config.getRepairParallelism(),
+            context.config.getRepairIntensity());
+
+    LOG.info("Scheduled repair created: {}", repairSchedule);
   }
 
   private boolean keyspaceHasNoTable(AppContext context, Cluster cluster, String keyspace) {
-    try (JmxProxy jmxProxy
-        = context.jmxConnectionFactory.connectAny(cluster, context.config.getJmxConnectionTimeoutInSeconds())) {
+    try {
+      JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(
+              cluster, context.config.getJmxConnectionTimeoutInSeconds());
 
       Set<String> tables = jmxProxy.getTableNamesForKeyspace(keyspace);
       return tables.isEmpty();
@@ -177,25 +173,21 @@ public final class ClusterRepairScheduler {
       Collection<RepairSchedule> currentSchedules = context.storage.getRepairSchedulesForCluster(cluster.getName());
       return currentSchedules
           .stream()
-          .map(
-              repairSchedule -> {
-                Optional<RepairUnit> repairUnit = context.storage.getRepairUnit(repairSchedule.getRepairUnitId());
-                return repairUnit.get().getKeyspaceName();
-              })
+          .map(repairSchedule -> context.storage.getRepairUnit(repairSchedule.getRepairUnitId()).getKeyspaceName())
           .collect(Collectors.toSet());
     }
 
     private Set<String> keyspacesInCluster(AppContext context, Cluster cluster) throws ReaperException {
-      try (JmxProxy jmxProxy
-          = context.jmxConnectionFactory.connectAny(cluster, context.config.getJmxConnectionTimeoutInSeconds())) {
-        List<String> keyspaces = jmxProxy.getKeyspaces();
-        if (keyspaces.isEmpty()) {
-          String message = format("No keyspace found in cluster %s", cluster.getName());
-          LOG.debug(message);
-          throw new IllegalArgumentException(message);
-        }
-        return Sets.newHashSet(keyspaces);
+      JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(
+              cluster, context.config.getJmxConnectionTimeoutInSeconds());
+
+      List<String> keyspaces = jmxProxy.getKeyspaces();
+      if (keyspaces.isEmpty()) {
+        String message = format("No keyspace found in cluster %s", cluster.getName());
+        LOG.debug(message);
+        throw new IllegalArgumentException(message);
       }
+      return Sets.newHashSet(keyspaces);
     }
   }
 }

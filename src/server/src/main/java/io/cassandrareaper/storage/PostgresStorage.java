@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,11 +17,13 @@
 
 package io.cassandrareaper.storage;
 
+import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSchedule;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairUnit;
+import io.cassandrareaper.core.Snapshot;
 import io.cassandrareaper.resources.view.RepairRunStatus;
 import io.cassandrareaper.resources.view.RepairScheduleStatus;
 import io.cassandrareaper.service.RepairParameters;
@@ -27,6 +32,7 @@ import io.cassandrareaper.storage.postgresql.BigIntegerArgumentFactory;
 import io.cassandrareaper.storage.postgresql.IStoragePostgreSql;
 import io.cassandrareaper.storage.postgresql.LongCollectionSqlTypeArgumentFactory;
 import io.cassandrareaper.storage.postgresql.PostgresArrayArgumentFactory;
+import io.cassandrareaper.storage.postgresql.PostgresRepairSegment;
 import io.cassandrareaper.storage.postgresql.RepairParallelismArgumentFactory;
 import io.cassandrareaper.storage.postgresql.RunStateArgumentFactory;
 import io.cassandrareaper.storage.postgresql.ScheduleStateArgumentFactory;
@@ -36,12 +42,16 @@ import io.cassandrareaper.storage.postgresql.UuidUtil;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
+import java.util.SortedSet;
 import java.util.UUID;
 
-import com.google.common.base.Optional;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+import org.apache.commons.lang3.StringUtils;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.exceptions.DBIException;
@@ -79,14 +89,21 @@ public final class PostgresStorage implements IStorage {
     try (Handle h = jdbi.open()) {
       result = getPostgresStorage(h).getCluster(clusterName);
     }
-    return Optional.fromNullable(result);
+    return Optional.ofNullable(result);
   }
 
   @Override
   public Optional<Cluster> deleteCluster(String clusterName) {
+    assert getRepairSchedulesForCluster(clusterName).isEmpty()
+        : StringUtils.join(getRepairSchedulesForCluster(clusterName));
+
+    assert getRepairRunsForCluster(clusterName, Optional.of(Integer.MAX_VALUE)).isEmpty()
+        : StringUtils.join(getRepairRunsForCluster(clusterName, Optional.of(Integer.MAX_VALUE)));
+
     Cluster result = null;
     try (Handle h = jdbi.open()) {
       IStoragePostgreSql pg = getPostgresStorage(h);
+      pg.deleteRepairUnits(clusterName);
       Cluster clusterToDel = pg.getCluster(clusterName);
       if (clusterToDel != null) {
         int rowsDeleted = pg.deleteCluster(clusterName);
@@ -95,7 +112,7 @@ public final class PostgresStorage implements IStorage {
         }
       }
     }
-    return Optional.fromNullable(result);
+    return Optional.ofNullable(result);
   }
 
   @Override
@@ -152,14 +169,14 @@ public final class PostgresStorage implements IStorage {
     try (Handle h = jdbi.open()) {
       result = getPostgresStorage(h).getRepairRun(UuidUtil.toSequenceId(id));
     }
-    return Optional.fromNullable(result);
+    return Optional.ofNullable(result);
   }
 
   @Override
-  public Collection<RepairRun> getRepairRunsForCluster(String clusterName) {
+  public Collection<RepairRun> getRepairRunsForCluster(String clusterName, Optional<Integer> limit) {
     Collection<RepairRun> result;
     try (Handle h = jdbi.open()) {
-      result = getPostgresStorage(h).getRepairRunsForCluster(clusterName);
+      result = getPostgresStorage(h).getRepairRunsForCluster(clusterName, limit.orElse(1000));
     }
     return result == null ? Lists.<RepairRun>newArrayList() : result;
   }
@@ -205,7 +222,6 @@ public final class PostgresStorage implements IStorage {
       handle.commit();
     } catch (DBIException ex) {
       LOG.warn("DELETE failed", ex);
-      ex.printStackTrace();
       if (handle != null) {
         handle.rollback();
       }
@@ -214,23 +230,13 @@ public final class PostgresStorage implements IStorage {
         handle.close();
       }
     }
-    if (result != null) {
-      tryDeletingRepairUnit(result.getRepairUnitId());
-    }
-    return Optional.fromNullable(result);
-  }
-
-  private void tryDeletingRepairUnit(UUID id) {
-    try (Handle h = jdbi.open()) {
-      IStoragePostgreSql pg = getPostgresStorage(h);
-      pg.deleteRepairUnit(UuidUtil.toSequenceId(id));
-    } catch (DBIException ex) {
-      LOG.info("cannot delete RepairUnit with id " + id);
-    }
+    return Optional.ofNullable(result);
   }
 
   @Override
-  public RepairRun addRepairRun(RepairRun.Builder newRepairRun, Collection<RepairSegment.Builder> newSegments) {
+  public RepairRun addRepairRun(
+      RepairRun.Builder newRepairRun, Collection<RepairSegment.Builder> newSegments)
+      throws ReaperException {
     RepairRun result;
     try (Handle h = jdbi.open()) {
       long insertedId = getPostgresStorage(h).insertRepairRun(newRepairRun.build(null));
@@ -264,36 +270,39 @@ public final class PostgresStorage implements IStorage {
   }
 
   @Override
-  public Optional<RepairUnit> getRepairUnit(UUID id) {
+  public RepairUnit getRepairUnit(UUID id) {
     RepairUnit result;
     try (Handle h = jdbi.open()) {
       result = getPostgresStorage(h).getRepairUnit(UuidUtil.toSequenceId(id));
     }
-    return Optional.fromNullable(result);
+    Preconditions.checkArgument(null != result);
+    return result;
   }
 
   @Override
-  public Optional<RepairUnit> getRepairUnit(
-      String clusterName,
-      String keyspaceName,
-      Set<String> columnFamilies,
-      Set<String> nodes,
-      Set<String> datacenters,
-      Set<String> blacklistedTables) {
+  public Optional<RepairUnit> getRepairUnit(RepairUnit.Builder params) {
     RepairUnit result;
     try (Handle h = jdbi.open()) {
-      IStoragePostgreSql storage = getPostgresStorage(h);
-      result =
-          storage.getRepairUnitByClusterAndTables(
-              clusterName, keyspaceName, columnFamilies, nodes, datacenters, blacklistedTables);
+
+      result = getPostgresStorage(h).getRepairUnitByClusterAndTables(
+              params.clusterName,
+              params.keyspaceName,
+              params.columnFamilies,
+              params.incrementalRepair,
+              params.nodes,
+              params.datacenters,
+              params.blacklistedTables,
+              params.repairThreadCount);
     }
-    return Optional.fromNullable(result);
+    return Optional.ofNullable(result);
   }
 
-  private void addRepairSegments(Collection<RepairSegment.Builder> newSegments, UUID runId) {
-    List<RepairSegment> insertableSegments = new ArrayList<>();
+  private void addRepairSegments(Collection<RepairSegment.Builder> newSegments, UUID runId)
+      throws ReaperException {
+    List<PostgresRepairSegment> insertableSegments = new ArrayList<>();
     for (RepairSegment.Builder segment : newSegments) {
-      insertableSegments.add(segment.withRunId(runId).build(null));
+      insertableSegments.add(
+          new PostgresRepairSegment(segment.withRunId(runId).withId(null).build()));
     }
     try (Handle h = jdbi.open()) {
       getPostgresStorage(h).insertRepairSegments(insertableSegments.iterator());
@@ -320,7 +329,7 @@ public final class PostgresStorage implements IStorage {
     try (Handle h = jdbi.open()) {
       result = getPostgresStorage(h).getRepairSegment(UuidUtil.toSequenceId(segmentId));
     }
-    return Optional.fromNullable(result);
+    return Optional.ofNullable(result);
   }
 
   @Override
@@ -335,7 +344,7 @@ public final class PostgresStorage implements IStorage {
     try (Handle h = jdbi.open()) {
       result = getPostgresStorage(h).getNextFreeRepairSegment(UuidUtil.toSequenceId(runId));
     }
-    return Optional.fromNullable(result);
+    return Optional.ofNullable(result);
   }
 
   @Override
@@ -352,7 +361,7 @@ public final class PostgresStorage implements IStorage {
               UuidUtil.toSequenceId(runId), range.get().getStart(), range.get().getEnd());
         }
       }
-      return Optional.fromNullable(result);
+      return Optional.ofNullable(result);
     } else {
       return getNextFreeSegment(runId);
     }
@@ -375,8 +384,8 @@ public final class PostgresStorage implements IStorage {
   }
 
   @Override
-  public Collection<UUID> getRepairRunIdsForCluster(String clusterName) {
-    Collection<UUID> result = Lists.newArrayList();
+  public SortedSet<UUID> getRepairRunIdsForCluster(String clusterName) {
+    SortedSet<UUID> result = Sets.newTreeSet(Collections.reverseOrder());
     try (Handle h = jdbi.open()) {
       for (Long l : getPostgresStorage(h).getRepairRunIdsForCluster(clusterName)) {
         result.add(UuidUtil.fromSequenceId(l));
@@ -416,7 +425,7 @@ public final class PostgresStorage implements IStorage {
     try (Handle h = jdbi.open()) {
       result = getPostgresStorage(h).getRepairSchedule(UuidUtil.toSequenceId(repairScheduleId));
     }
-    return Optional.fromNullable(result);
+    return Optional.ofNullable(result);
   }
 
   @Override
@@ -482,10 +491,7 @@ public final class PostgresStorage implements IStorage {
         }
       }
     }
-    if (result != null) {
-      tryDeletingRepairUnit(result.getRepairUnitId());
-    }
-    return Optional.fromNullable(result);
+    return Optional.ofNullable(result);
   }
 
   @Override
@@ -499,6 +505,44 @@ public final class PostgresStorage implements IStorage {
   public Collection<RepairScheduleStatus> getClusterScheduleStatuses(String clusterName) {
     try (Handle h = jdbi.open()) {
       return getPostgresStorage(h).getClusterScheduleOverview(clusterName);
+    }
+  }
+
+  @Override
+  public boolean saveSnapshot(Snapshot snapshot) {
+    boolean result = false;
+    try (Handle h = jdbi.open()) {
+      int rowsAdded = getPostgresStorage(h).saveSnapshot(snapshot);
+      if (rowsAdded < 1) {
+        LOG.warn(
+            "failed saving snapshot with name {} for cluster {}",
+            snapshot.getName(),
+            snapshot.getClusterName());
+      } else {
+        result = true;
+      }
+    }
+
+    return result;
+  }
+
+  @Override
+  public boolean deleteSnapshot(Snapshot snapshot) {
+    boolean result = false;
+    try (Handle h = jdbi.open()) {
+      IStoragePostgreSql pg = getPostgresStorage(h);
+      int rowsDeleted = pg.deleteSnapshot(snapshot.getClusterName(), snapshot.getName());
+      if (rowsDeleted > 0) {
+        result = true;
+      }
+    }
+    return result;
+  }
+
+  @Override
+  public Snapshot getSnapshot(String clusterName, String snapshotName) {
+    try (Handle h = jdbi.open()) {
+      return getPostgresStorage(h).getSnapshot(clusterName, snapshotName);
     }
   }
 }

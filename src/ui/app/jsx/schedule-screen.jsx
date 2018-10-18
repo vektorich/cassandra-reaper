@@ -1,3 +1,18 @@
+//
+//  Copyright 2017-2018 The Last Pickle Ltd
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 import React from "react";
 import moment from "moment";
 import ServerStatus from "jsx/server-status";
@@ -17,7 +32,9 @@ const ScheduleScreen = React.createClass({
     updateStatusSubject: React.PropTypes.object.isRequired,
     deleteResult: React.PropTypes.object.isRequired,
     currentCluster: React.PropTypes.string.isRequired,
-    statusObservableTimer: React.PropTypes.object.isRequired
+    statusObservableTimer: React.PropTypes.object.isRequired,
+    logoutSubject: React.PropTypes.object.isRequired,
+    logoutResult: React.PropTypes.object.isRequired
   },
 
   getInitialState: function() {
@@ -41,7 +58,8 @@ const ScheduleScreen = React.createClass({
             <NavBar></NavBar>
             <!-- /.navbar-header -->
 
-            <Sidebar clusterNames={this.props.clusterNames} currentCluster={this.state.currentCluster}> </Sidebar>
+            <Sidebar clusterNames={this.props.clusterNames} currentCluster={this.state.currentCluster}
+              logoutSubject={this.props.logoutSubject} logoutResult={this.props.logoutResult}> </Sidebar>
         </nav>
 
         <div id="page-wrapper">

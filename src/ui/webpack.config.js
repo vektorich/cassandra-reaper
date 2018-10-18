@@ -1,14 +1,30 @@
+//
+//  Copyright 2015-2016 Stefan Podkowinski
+//  Copyright 2016-2018 The Last Pickle Ltd
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 var path = require('path');
 var webpack = require('webpack');
 var HtmlWebpackPlugin = require('html-webpack-plugin');
 
 var _commonDeps = [
-  "bootstrap.css", "sb-admin-2.css", "timeline.css", "font-awesome.css", "metisMenu.css", "style.css",
+  "bootstrap.css", "sb-admin-2.css", "timeline.css", "font-awesome.css", "metisMenu.css", "style.scss",
   "jquery", "react", "bootstrap", "metisMenu", "sb-admin-2", "rxjs"
 ];
 
 // include hot reload deps in dev mode
-var isDev = process.env.BUILD_DEV == '1'; // set by server.js
+const isDev = process.argv.indexOf('-d') !== -1 || process.env.BUILD_DEV;
 if(isDev) {
   _commonDeps.push("webpack-dev-server/client?http://0.0.0.0:8000"); // WebpackDevServer host and port
   _commonDeps.push("webpack/hot/only-dev-server");
@@ -24,6 +40,15 @@ module.exports = {
     ],
     repair: [
       path.join(__dirname, 'app', 'repair.js')
+    ],
+    snapshot: [
+      path.join(__dirname, 'app', 'snapshot.js')
+    ],
+    segments: [
+      path.join(__dirname, 'app', 'segments.js')
+    ],
+    login: [
+      path.join(__dirname, 'app', 'login.js')
     ],
     deps: _commonDeps
   },
@@ -51,29 +76,59 @@ module.exports = {
     root:  path.join(__dirname, "node_modules")
   },
   plugins: [
-    new HtmlWebpackPlugin({  // Also generate a test.html
+    new HtmlWebpackPlugin({
       filename: 'index.html',
       chunks: ['deps', 'index'],
       hash: true,
       title: ' - Clusters',
       template: path.join(__dirname, 'app', 'html_template.ejs'),
-      inject: 'head'
+      inject: 'head',
+      baseUrl: isDev ? '/' : '/webui/'
     }),
-    new HtmlWebpackPlugin({  // Also generate a test.html
+    new HtmlWebpackPlugin({ 
       filename: 'repair.html',
       chunks: ['deps', 'repair'],
       hash: true,
       title: ' - Repair',
       template: path.join(__dirname, 'app', 'html_template.ejs'),
-      inject: 'head'
+      inject: 'head',
+      baseUrl: isDev ? '/' : '/webui/'
     }),
-    new HtmlWebpackPlugin({  // Also generate a test.html
+    new HtmlWebpackPlugin({  
       filename: 'schedules.html',
       chunks: ['deps', 'schedules'],
       hash: true,
       title: ' - Schedules',
       template: path.join(__dirname, 'app', 'html_template.ejs'),
-      inject: 'head'
+      inject: 'head',
+      baseUrl: isDev ? '/' : '/webui/'
+    }),
+    new HtmlWebpackPlugin({
+      filename: 'segments.html',
+      chunks: ['deps', 'segments'],
+      hash: true,
+      title: ' - Segments',
+      template: path.join(__dirname, 'app', 'html_template.ejs'),
+      inject: 'head',
+      baseUrl: isDev ? '/' : '/webui/'
+    }),
+    new HtmlWebpackPlugin({
+      filename: 'snapshot.html',
+      chunks: ['deps', 'snapshot'],
+      hash: true,
+      title: ' - Snapshots',
+      template: path.join(__dirname, 'app', 'html_template.ejs'),
+      inject: 'head',
+      baseUrl: isDev ? '/' : '/webui/'
+    }),
+    new HtmlWebpackPlugin({ 
+      filename: 'login.html',
+      chunks: ['deps', 'login'],
+      hash: true,
+      title: ' - Login',
+      template: path.join(__dirname, 'app', 'html_template.ejs'),
+      inject: 'head',
+      bbaseUrl: isDev ? '/' : '/webui/'
     }),
     new webpack.ProvidePlugin({
       $: "jquery",
@@ -92,9 +147,10 @@ module.exports = {
         include: path.join(__dirname, 'app')
       },
       { test: /\.css$/, loader: "style-loader!css-loader" },
+      { test: /\.scss$/, loaders: ["style","css","resolve-url","sass?sourceMap"]},
       // loaders for font-awesome
       { test: /\.woff(2)?(\?v=[0-9]\.[0-9]\.[0-9])?$/, loader: "url-loader?limit=10000&minetype=application/font-woff" },
-      { test: /\.(ttf|eot|svg)(\?v=[0-9]\.[0-9]\.[0-9])?$/, loader: "file-loader" }
+      { test: /\.(gif|ttf|eot|svg?)(\?v=[0-9]\.[0-9]\.[0-9])?$/, loader: 'url-loader?name=[name].[ext]'  }
     ]
   }
 };

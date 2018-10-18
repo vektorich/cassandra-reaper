@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -60,21 +63,18 @@ public final class RepairScheduleMapper implements ResultSetMapper<RepairSchedul
     }
 
     RepairSchedule.State scheduleState = RepairSchedule.State.valueOf(stateStr);
+    String parallelism = rs.getString("repair_parallelism").toLowerCase().replace("datacenter_aware", "dc_parallel");
 
-    return new RepairSchedule.Builder(
-            UuidUtil.fromSequenceId(rs.getLong("repair_unit_id")),
-            scheduleState,
-            rs.getInt("days_between"),
-            RepairRunMapper.getDateTimeOrNull(rs, "next_activation"),
-            ImmutableList.copyOf(runHistoryUuids),
-            rs.getInt("segment_count"),
-            RepairParallelism.fromName(
-                rs.getString("repair_parallelism")
-                    .toLowerCase()
-                    .replace("datacenter_aware", "dc_parallel")),
-            rs.getDouble("intensity"),
-            RepairRunMapper.getDateTimeOrNull(rs, "creation_time"),
-            rs.getInt("segment_count_per_node"))
+    return RepairSchedule.builder(UuidUtil.fromSequenceId(rs.getLong("repair_unit_id")))
+        .state(scheduleState)
+        .daysBetween(rs.getInt("days_between"))
+        .nextActivation(RepairRunMapper.getDateTimeOrNull(rs, "next_activation"))
+        .runHistory(ImmutableList.copyOf(runHistoryUuids))
+        .segmentCount(rs.getInt("segment_count"))
+        .repairParallelism(RepairParallelism.fromName(parallelism))
+        .intensity(rs.getDouble("intensity"))
+        .creationTime(RepairRunMapper.getDateTimeOrNull(rs, "creation_time"))
+        .segmentCountPerNode(rs.getInt("segment_count_per_node"))
         .owner(rs.getString("owner"))
         .pauseTime(RepairRunMapper.getDateTimeOrNull(rs, "pause_time"))
         .build(UuidUtil.fromSequenceId(rs.getLong("id")));

@@ -1,101 +1,52 @@
+//
+//  Copyright 2015-2016 Stefan Podkowinski
+//  Copyright 2016-2018 The Last Pickle Ltd
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 import React from "react";
-import $ from "jquery";
-import {DeleteStatusMessageMixin} from "jsx/mixin";
+import NodeStatus from "jsx/node-status";
+import {DeleteStatusMessageMixin, humanFileSize, getUrlPrefix} from "jsx/mixin";
 import Modal from 'react-bootstrap/lib/Modal';
 import Button from 'react-bootstrap/lib/Button';
 import Tooltip from 'react-bootstrap/lib/Tooltip';
 import OverlayTrigger from 'react-bootstrap/lib/OverlayTrigger';
 import ProgressBar from 'react-bootstrap/lib/ProgressBar';
-
-const NodeStatus = React.createClass({
-  propTypes: {
-    endpointStatus: React.PropTypes.object.isRequired,
-    clusterName: React.PropTypes.string.isRequired,
-    nbNodes: React.PropTypes.number.isRequired,
-    rackLoad: React.PropTypes.number.isRequired
-  },
-
-  getInitialState() {
-    return { showModal: false };
-  },
-
-  close() {
-    this.setState({ showModal: false });
-  },
-
-  open() {
-    this.setState({ showModal: true });
-  },
-
-  render: function() {
-    
-    let buttonStyle = "btn btn-xs btn-success";
-    let largeButtonStyle = "btn btn-lg btn-success";
-
-    if(!this.props.endpointStatus.status.endsWith('UP')){
-      buttonStyle = "btn btn-xs btn-danger";
-      largeButtonStyle = "btn btn-lg btn-danger";
-    }
-
-    const btStyle = {
-      width: (((this.props.endpointStatus.load/this.props.rackLoad)*100)-0) + "%",
-      margin:"0px",
-      textOverflow: "hidden"
-    };
-
-    const tooltip = (
-      <Tooltip id="tooltip"><strong>{this.props.endpointStatus.endpoint}</strong> ({humanFileSize(this.props.endpointStatus.load, 1024)})</Tooltip>
-    );
-
-    return (<span>
-            <OverlayTrigger placement="top" overlay={tooltip}><button type="button" style={btStyle} className={buttonStyle} onClick={this.open}>{this.props.endpointStatus.endpoint} ({humanFileSize(this.props.endpointStatus.load, 1024)})</button></OverlayTrigger>
-            <Modal show={this.state.showModal} onHide={this.close}>
-              <Modal.Header closeButton>
-                <Modal.Title>Endpoint {this.props.endpointStatus.endpoint}</Modal.Title>
-              </Modal.Header>
-              <Modal.Body>
-                <h4>Host id</h4>
-                <p>{this.props.endpointStatus.hostId}</p>
-                <h4>Datacenter / Rack</h4>
-                <p>{this.props.endpointStatus.dc} / {this.props.endpointStatus.rack}</p>
-                <h4>Release version</h4>
-                <p>{this.props.endpointStatus.releaseVersion}</p>
-                <h4>Tokens</h4>
-                <p>{this.props.endpointStatus.tokens}</p>
-                <h4>Status</h4>
-                <p><button type="button" className={largeButtonStyle}>{this.props.endpointStatus.status}</button></p>
-                <h4>Severity</h4>
-                <p>{this.props.endpointStatus.severity}</p>
-                <h4>Data size on disk</h4>
-                <p>{humanFileSize(this.props.endpointStatus.load, 1024)}</p>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button onClick={this.close}>Close</Button>
-              </Modal.Footer>
-            </Modal>
-          </span>
-    );
-
-    }
-
-})
-
+import Popover from 'react-bootstrap/lib/Popover';
+import $ from "jquery";
+var NotificationSystem = require('react-notification-system');
 
 const Cluster = React.createClass({
 
   propTypes: {
-    name: React.PropTypes.string.isRequired
+    name: React.PropTypes.string.isRequired,
+    clusterFilter: React.PropTypes.string.isRequired
   },
   
   getInitialState: function() {
-    const isDev = window != window.top;
-    const URL_PREFIX = isDev ? 'http://127.0.0.1:8080' : '';
-    return {clusterStatus: {}, clusterStatuses: null, urlPrefix: URL_PREFIX, nbNodes: 0, nodesDown:0};
+    const URL_PREFIX = getUrlPrefix(window.top.location.pathname);
+    return {clusterStatus: {}, 
+            clusterStatuses: null, 
+            urlPrefix: URL_PREFIX , 
+            nbNodes: 0, 
+            nodesDown:0,
+            refreshing: true,
+            nodes_status: null
+          };
   },
 
   componentWillMount: function() {
     this._refreshClusterStatus();
-    this.setState({clusterStatuses: setInterval(this._refreshClusterStatus, 10000)}); 
   },
 
   _refreshClusterStatus: function() {
@@ -104,13 +55,25 @@ const Cluster = React.createClass({
           method: 'GET',
           component: this,
           complete: function(data) {
-            this.component.setState({clusterStatus: $.parseJSON(data.responseText)});
+            console.log(this.component.props.name + " complete.");
+            this.component.setState({clusterStatuses: setTimeout(this.component._refreshClusterStatus, 30000),
+                                     clusterStatus: $.parseJSON(data.responseText)});
+            
+            if(this.component.state.clusterStatus.nodes_status){
+              this.component.setState({nodes_status: this.component.state.clusterStatus.nodes_status});
+            }
+            console.log(this.component.props.name + " : Next attempt in 30s.")
+          },
+          error: function(data) {
+            console.log(this.component.props.name + " failed.");
+            this.component.setState({clusterStatuses: setTimeout(this.component._refreshClusterStatus, 30000)});
+
           }
       });
   },
 
   componentWillUnmount: function() {
-    clearInterval(this.clusterStatuses);
+    clearInterval(this.state.clusterStatuses);
   },
 
   render: function() {
@@ -123,66 +86,77 @@ const Cluster = React.createClass({
     let progressStyle = {
       marginTop: "0.25em",
       marginBottom: "0.25em"
-    }
+    };
 
-    let datacenters=<div className="clusterLoader"></div>
-
+    let datacenters = "";
     let runningRepairs = 0;
 
     let repairProgress = "";
     let totalLoad = 0;
-    if(this.state.clusterStatus.nodes_status){
-      runningRepairs = this.state.clusterStatus.repair_runs.reduce(function(previousValue, repairRun){
-                              return previousValue + (repairRun.state=='RUNNING' ? 1: 0); 
-                            }, 0);;
 
-      repairProgress = this.state.clusterStatus.repair_runs.filter(repairRun => repairRun.state=='RUNNING').map(repairRun => 
+    if (this.state.clusterStatus.repair_runs) {
+      runningRepairs = this.state.clusterStatus.repair_runs.reduce(function(previousValue, repairRun){
+                              return previousValue + (repairRun.state === 'RUNNING' ? 1: 0);
+                            }, 0);
+
+      repairProgress = this.state.clusterStatus.repair_runs.filter(repairRun => repairRun.state === 'RUNNING').map(repairRun =>
                       <ProgressBar now={(repairRun.segments_repaired*100)/repairRun.total_segments} active bsStyle="success" 
                                    style={progressStyle} 
                                    label={repairRun.keyspace_name}
                                    key={repairRun.id}/>
       )
-
-      datacenters = Object.keys(this.state.clusterStatus.nodes_status.endpointStates[0].endpoints).sort().map(dc => 
-                      <Datacenter datacenter={this.state.clusterStatus.nodes_status.endpointStates[0].endpoints[dc]} 
-                                  datacenterName={dc} 
-                                  nbDatacenters={Object.keys(this.state.clusterStatus.nodes_status.endpointStates[0].endpoints).length} 
-                                  clusterName={this.props.name} key={this.props.name + '-' + dc} 
-                                  totalLoad={this.state.clusterStatus.nodes_status.endpointStates[0].totalLoad}/>
-      )
-
-      totalLoad = this.state.clusterStatus.nodes_status.endpointStates[0].totalLoad;
     }
+    
+    if(this.state.nodes_status != null) {
+        datacenters = Object.keys(this.state.nodes_status.endpointStates[0].endpoints).sort().map(dc => 
+                        <Datacenter datacenter={this.state.nodes_status.endpointStates[0].endpoints[dc]} 
+                                    datacenterName={dc} 
+                                    nbDatacenters={Object.keys(this.state.nodes_status.endpointStates[0].endpoints).length} 
+                                    clusterName={this.props.name} key={this.props.name + '-' + dc} 
+                                    totalLoad={this.state.nodes_status.endpointStates[0].totalLoad}/>
+       );
+       totalLoad = this.state.nodes_status.endpointStates[0].totalLoad;
+      } 
+      else {
+        datacenters = <div className="clusterLoader"></div>;
+      }
 
     let runningRepairsBadge = <span className="label label-default">{runningRepairs}</span>;
     if(runningRepairs > 0) {
       runningRepairsBadge = <span className="label label-success">{runningRepairs}</span>;
     }
 
+    let clusterDisplayStyle = {
+      display: "none" 
+    };
+
+    if(this.props.name.includes(this.props.clusterFilter)) {
+      clusterDisplayStyle = {
+        display: "block"
+      }
+    }
+
     return (
-      <div className="panel panel-default">
+      <div className="panel panel-default" style={clusterDisplayStyle}>
         <div className="panel-body">
           <div className="row">
-              <div className="col-lg-2"><a href={'repair.html?currentCluster=' + this.props.name}><h4>{this.props.name} <span className="badge">{humanFileSize(totalLoad,1024)}</span></h4></a><div>Running repairs : {runningRepairsBadge}<br/>{repairProgress}</div>
-              <button type="button" className="btn btn-xs btn-danger" onClick={this._onDelete}>Delete cluster</button>
-              </div>
-              <div className="col-lg-10">
+            <div className="col-lg-2"><a href={'repair.html?currentCluster=' + this.props.name}><h4>{this.props.name} <span className="badge">{humanFileSize(totalLoad,1024)}</span></h4></a><div>Running repairs: {runningRepairsBadge}<br/>{repairProgress}</div>
+              <button type="button" className="btn btn-xs btn-danger" onClick={this._onDelete}>Forget cluster</button>
+            </div>
+            <div className="col-lg-10">
               <div className="row" style={rowDivStyle}>
-                <div className="row" style={rowDivStyle}>
-                      {datacenters}
-                </div>
+                {datacenters}
               </div>
-              </div>
-          </div>
+            </div>
           </div>
         </div>
+      </div>
     );
   },
 
   _onDelete: function(e) {
     this.props.deleteSubject.onNext(this.props.name);
   }
-
 });
 
 
@@ -197,7 +171,6 @@ const Datacenter = React.createClass({
   },
   
   render: function() {
-
     const dcSize = Object.keys(this.props.datacenter).map(rack => this.props.datacenter[rack].reduce(function(previousValue, endpoint){
                               return previousValue + endpoint.load; 
                             }, 0)).reduce(function(previousValue, currentValue){
@@ -212,7 +185,7 @@ const Datacenter = React.createClass({
 
     let badgeStyle = {
       float: "right"
-    }
+    };
 
     let panelHeadingStyle = {
       padding: "2px 10px"
@@ -224,7 +197,7 @@ const Datacenter = React.createClass({
 
     let panelStyle = {
       marginBottom: "1px"
-    }
+    };
 
     const nbRacks = Object.keys(this.props.datacenter).length;
     const racks = Object.keys(this.props.datacenter).sort().map(rack => 
@@ -238,11 +211,10 @@ const Datacenter = React.createClass({
             </div>
     );
   },
-
-
 });
 
 const Rack = React.createClass({
+  _notificationSystem: null,
 
   propTypes: {
     rack: React.PropTypes.array.isRequired,
@@ -250,60 +222,59 @@ const Rack = React.createClass({
     clusterName: React.PropTypes.string.isRequired,
     dcLoad: React.PropTypes.number.isRequired
   },
-  
-  render: function() {
 
-  const rackSize = this.props.rack.reduce(function(previousValue, endpoint){
-                              return previousValue + endpoint.load; 
-                            }, 0);;
-  let rowDivStyle = {
-      marginLeft: "0",
-      paddingLeft: "0",
-      paddingRight: "1px",
-      width: ((rackSize/this.props.dcLoad)*100) + "%"
-  };
-
-  let badgeStyle = {
-    float: "right"
-  }
-
-  let panelHeadingStyle = {
-    padding: "2px 10px"
-  };
-
-  let panelBodyStyle = {
-    padding: "1px"
-  };
-
-  let panelStyle = {
-    marginBottom: "1px"
-  }
-  
-  let nodes= "" ;
-  let rackName = "";
-  
-
-  if(this.props.rack) {
-    rackName = this.props.rack[0].rack;
-    nodes = this.props.rack.map(endpoint =>
-        <NodeStatus key={endpoint.endpoint} endpointStatus={endpoint} clusterName={this.props.clusterName} nbNodes={this.props.rack.length} rackLoad={rackSize}/>
-    );
-  }
-
-  return (
-            <div className="col-lg-12" style={rowDivStyle}>
-              <div className="panel panel-default panel-success" style={panelStyle}>
-                <div className="panel-heading" style={panelHeadingStyle}><b>{rackName} <span className="badge" style={badgeStyle}>{humanFileSize(rackSize, 1024)}</span></b></div>
-                <div className="panel-body" style={panelBodyStyle}>{nodes}</div>
-              </div>
-            </div>
-  );
+  componentDidMount: function() {
+    this._notificationSystem = this.refs.notificationSystem;
   },
 
+  render: function() {
+    const rackSize = this.props.rack.reduce((previousValue, endpoint) => previousValue + endpoint.load, 0);
+    let rowDivStyle = {
+        marginLeft: "0",
+        paddingLeft: "0",
+        paddingRight: "1px",
+        width: ((rackSize/this.props.dcLoad)*100) + "%"
+    };
 
+    let badgeStyle = {
+      float: "right"
+    };
+
+    let panelHeadingStyle = {
+      padding: "2px 10px"
+    };
+
+    let panelBodyStyle = {
+      padding: "1px"
+    };
+
+    let panelStyle = {
+      marginBottom: "1px"
+    };
+
+    let nodes = "" ;
+    let rackName = "";
+
+    if(this.props.rack) {
+      rackName = this.props.rack[0].rack;
+      nodes = this.props.rack.map(endpoint =>
+          <NodeStatus key={endpoint.endpoint} endpointStatus={endpoint}
+            clusterName={this.props.clusterName} nbNodes={this.props.rack.length} rackLoad={rackSize}
+            notificationSystem={this._notificationSystem}/>
+      );
+    }
+
+    return (
+      <div className="col-lg-12" style={rowDivStyle}>
+        <NotificationSystem ref="notificationSystem" />
+        <div className="panel panel-default panel-success" style={panelStyle}>
+          <div className="panel-heading" style={panelHeadingStyle}><b>{rackName} <span className="badge" style={badgeStyle}>{humanFileSize(rackSize, 1024)}</span></b></div>
+          <div className="panel-body" style={panelBodyStyle}>{nodes}</div>
+        </div>
+      </div>
+    );
+  },
 });
-
-
 
 const clusterList = React.createClass({
   mixins: [DeleteStatusMessageMixin],
@@ -315,7 +286,7 @@ const clusterList = React.createClass({
   },
 
   getInitialState: function() {
-    return {clusterNames: [], deleteResultMsg: null};
+    return {clusterNames: [], deleteResultMsg: null, clusterFilter: ""};
   },
 
   componentWillMount: function() {
@@ -328,44 +299,49 @@ const clusterList = React.createClass({
     this._clusterNamesSubscription.dispose();
   },
 
-  render: function() {
+  _handleChange: function(e) {
+    const v = e.target.value;
+    const n = e.target.id.substring(3); // strip in_ prefix
+    
+    // update state
+    const state = this.state;
+    state[n] = v;
+    this.replaceState(state);
+  }, 
 
-    const rows = this.state.clusterNames.map(name =>
-      <Cluster name={name} key={name} deleteSubject={this.props.deleteSubject} getClusterStatus={this.props.getClusterStatus} getClusterSubject={this.props.getClusterSubject}/>);
+  render: function() {
+    const rows = this.state.clusterNames.sort().map(name =>
+      <Cluster name={name} key={name} deleteSubject={this.props.deleteSubject} getClusterStatus={this.props.getClusterStatus} getClusterSubject={this.props.getClusterSubject} clusterFilter={this.state.clusterFilter}/>);
 
     let table = null;
-    if(rows.length == 0) {
-      table = <div className="alert alert-info" role="alert">No clusters found</div>
+    if(rows.length === 0) {
+      table = <div className="alert alert-info" role="alert">No clusters found</div>;
     } else {
-
-      table = <div>
-              {rows}
-              </div>
+        table = <div>{rows}</div>;
     }
+
+    let filterInput = <div className="row">
+      <div className="col-lg-12">
+        <form className="form-horizontal form-condensed">
+          <div className="form-group">
+            <label htmlFor="in_clusterName" className="col-sm-3 control-label">Filter: </label>
+            <div className="col-sm-9 col-md-7 col-lg-5">
+              <input type="text" required className="form-control" value={this.state.clusterFilter}
+                    onChange={this._handleChange} id="in_clusterFilter" placeholder="Start typing to filter clusters..."/>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>;
 
     return (<div className="row">
               <div className="col-lg-12">
                 {this.deleteMessage()}
-                {rows}
+                {filterInput}
+                {table}
               </div>
             </div>);
   }
 });
-
-const humanFileSize = function(bytes, si) {
-      var thresh = si ? 1000 : 1024;
-      if(Math.abs(bytes) < thresh) {
-          return bytes + ' B';
-      }
-      var units = si
-          ? ['kB','MB','GB','TB','PB','EB','ZB','YB']
-          : ['KiB','MiB','GiB','TiB','PiB','EiB','ZiB','YiB'];
-      var u = -1;
-      do {
-          bytes /= thresh;
-          ++u;
-      } while(Math.abs(bytes) >= thresh && u < units.length - 1);
-      return bytes.toFixed(1)+' '+units[u];
-    }
 
 export default clusterList;

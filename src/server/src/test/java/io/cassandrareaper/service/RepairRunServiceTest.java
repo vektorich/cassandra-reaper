@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,6 +19,7 @@ package io.cassandrareaper.service;
 
 import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.RepairUnit;
+import io.cassandrareaper.core.Segment;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -56,8 +60,13 @@ public final class RepairRunServiceTest {
     rangeToEndpoint.put(Arrays.asList("4", "6"), Arrays.asList("node1"));
     rangeToEndpoint.put(Arrays.asList("6", "8"), Arrays.asList("node1", "node2"));
 
-    List<RingRange> segments = Arrays.asList(new RingRange("1", "2"), new RingRange("2", "3"), new RingRange("3", "4"),
-        new RingRange("4", "5"), new RingRange("5", "6"), new RingRange("6", "8"));
+    List<Segment> segments = Arrays.asList(
+            Segment.builder().withTokenRange(new RingRange("1", "2")).build(),
+            Segment.builder().withTokenRange(new RingRange("2", "3")).build(),
+            Segment.builder().withTokenRange(new RingRange("3", "4")).build(),
+            Segment.builder().withTokenRange(new RingRange("4", "5")).build(),
+            Segment.builder().withTokenRange(new RingRange("5", "6")).build(),
+            Segment.builder().withTokenRange(new RingRange("6", "8")).build());
 
     final RepairUnit repairUnit1 = mock(RepairUnit.class);
     when(repairUnit1.getNodes()).thenReturn(new HashSet<String>(Arrays.asList("node3", "node2")));
@@ -68,8 +77,9 @@ public final class RepairRunServiceTest {
     final RepairUnit repairUnit3 = mock(RepairUnit.class);
     when(repairUnit3.getNodes()).thenReturn(new HashSet<String>(Arrays.asList("node3")));
 
-    List<RingRange> filtered = RepairRunService.filterSegmentsByNodes(segments, repairUnit1,
-        RepairRunService.buildEndpointToRangeMap(rangeToEndpoint));
+    List<Segment> filtered = RepairRunService.filterSegmentsByNodes(
+            segments, repairUnit1, RepairRunService.buildEndpointToRangeMap(rangeToEndpoint));
+
     assertEquals(filtered.size(), 4);
 
     filtered = RepairRunService.filterSegmentsByNodes(segments, repairUnit2,
@@ -103,7 +113,7 @@ public final class RepairRunServiceTest {
     endpointToRange.put("node2", Lists.newArrayList());
     endpointToRange.put("node3", Lists.newArrayList());
 
-    assertEquals(30, RepairRunService.computeGlobalSegmentCount(10, rangeToEndpoint, endpointToRange));
+    assertEquals(30, RepairRunService.computeGlobalSegmentCount(10, endpointToRange));
   }
 
   @Test
@@ -120,7 +130,7 @@ public final class RepairRunServiceTest {
     endpointToRange.put("node2", Lists.newArrayList());
     endpointToRange.put("node3", Lists.newArrayList());
 
-    assertEquals(60, RepairRunService.computeGlobalSegmentCount(10, rangeToEndpoint, endpointToRange));
+    assertEquals(30, RepairRunService.computeGlobalSegmentCount(10, endpointToRange));
   }
 
   @Test
@@ -137,6 +147,42 @@ public final class RepairRunServiceTest {
     endpointToRange.put("node2", Lists.newArrayList());
     endpointToRange.put("node3", Lists.newArrayList());
 
-    assertEquals(48, RepairRunService.computeGlobalSegmentCount(0, rangeToEndpoint, endpointToRange));
+    assertEquals(48, RepairRunService.computeGlobalSegmentCount(0, endpointToRange));
+  }
+
+  @Test
+  public void computeGlobalSegmentCount256TokenPerNodeTest() {
+
+    Map<List<String>, List<String>> rangeToEndpoint = Maps.newHashMap();
+    for (int i = 0; i < 768; i++) {
+      rangeToEndpoint.put(
+          Arrays.asList(i + "", (i + 1) + ""), Arrays.asList("node1", "node2", "node3"));
+    }
+
+    Map<String, List<RingRange>> endpointToRange = Maps.newHashMap();
+    endpointToRange.put("node1", Lists.newArrayList());
+    endpointToRange.put("node2", Lists.newArrayList());
+    endpointToRange.put("node3", Lists.newArrayList());
+
+    assertEquals(48, RepairRunService.computeGlobalSegmentCount(0, endpointToRange));
+  }
+
+  @Test
+  public void buildReplicasToRangeMapTest() {
+    Map<List<String>, List<String>> rangeToEndpoint = Maps.newHashMap();
+    rangeToEndpoint.put(Arrays.asList("1", "2"), Arrays.asList("node1", "node2", "node3"));
+    rangeToEndpoint.put(Arrays.asList("2", "4"), Arrays.asList("node1", "node2", "node3"));
+    rangeToEndpoint.put(Arrays.asList("4", "6"), Arrays.asList("node1"));
+    rangeToEndpoint.put(Arrays.asList("6", "8"), Arrays.asList("node1", "node2"));
+    rangeToEndpoint.put(Arrays.asList("9", "10"), Arrays.asList("node1", "node2"));
+    rangeToEndpoint.put(Arrays.asList("11", "12"), Arrays.asList("node2", "node3", "node1"));
+
+    Map<List<String>, List<RingRange>> replicasToRangeMap
+        = RepairRunService.buildReplicasToRangeMap(rangeToEndpoint);
+
+    assertEquals(replicasToRangeMap.entrySet().size(), 3);
+    assertEquals(replicasToRangeMap.get(Arrays.asList("node1", "node2", "node3")).size(), 3);
+    assertEquals(replicasToRangeMap.get(Arrays.asList("node1")).size(), 1);
+    assertEquals(replicasToRangeMap.get(Arrays.asList("node1", "node2")).size(), 2);
   }
 }

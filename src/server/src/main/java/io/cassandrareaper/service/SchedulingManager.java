@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -21,11 +24,11 @@ import io.cassandrareaper.core.RepairSchedule;
 import io.cassandrareaper.core.RepairUnit;
 
 import java.util.Collection;
+import java.util.Optional;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
 
-import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
@@ -138,12 +141,7 @@ public final class SchedulingManager extends TimerTask {
               schedule.getRepairUnitId(),
               schedule.getId());
 
-          Optional<RepairUnit> fetchedUnit = context.storage.getRepairUnit(schedule.getRepairUnitId());
-          if (!fetchedUnit.isPresent()) {
-            LOG.warn("RepairUnit with id {} not found", schedule.getRepairUnitId());
-            return false;
-          }
-          RepairUnit repairUnit = fetchedUnit.get();
+          RepairUnit repairUnit = context.storage.getRepairUnit(schedule.getRepairUnitId());
           if (repairRunAlreadyScheduled(schedule, repairUnit)) {
             return false;
           }
@@ -152,14 +150,19 @@ public final class SchedulingManager extends TimerTask {
             RepairRun newRepairRun = createNewRunForUnit(schedule, repairUnit);
 
             ImmutableList<UUID> newRunHistory
-                = new ImmutableList.Builder<UUID>().addAll(schedule.getRunHistory()).add(newRepairRun.getId()).build();
+                = new ImmutableList.Builder<UUID>()
+                    .addAll(schedule.getRunHistory())
+                    .add(newRepairRun.getId())
+                    .build();
 
-            RepairSchedule latestSchedule = context.storage.getRepairSchedule(schedule.getId()).get();
+            RepairSchedule latestSchedule
+                = context.storage.getRepairSchedule(schedule.getId()).get();
 
             if (equal(schedule, latestSchedule)) {
 
-              boolean result = context.storage.updateRepairSchedule(
-                  schedule.with().runHistory(newRunHistory).build(schedule.getId()));
+              boolean result
+                  = context.storage.updateRepairSchedule(
+                      schedule.with().runHistory(newRunHistory).build(schedule.getId()));
               // FIXME – concurrency is broken unless we atomically add/remove run history items
               // boolean result = context.storage
               //        .addRepairRunToRepairSchedule(schedule.getId(), newRepairRun.getId());
@@ -169,14 +172,19 @@ public final class SchedulingManager extends TimerTask {
                 return true;
               }
             } else if (schedule.getRunHistory().size() < latestSchedule.getRunHistory().size()) {
-              UUID newRepairRunId = latestSchedule.getRunHistory().get(latestSchedule.getRunHistory().size() - 1);
-              LOG.info("schedule {} has already added a new repair run {}", schedule.getId(), newRepairRunId);
+              latestSchedule.getRunHistory().get(latestSchedule.getRunHistory().size() - 1);
+              LOG.info(
+                  "schedule {} has already added a new repair run {}",
+                  schedule.getId(),
+                  newRepairRun.getId());
               // this repair_run is identified as a duplicate (for this activation):
               // so take the last repair run, and try start it. it's ok if already running.
-              newRepairRun = context.storage.getRepairRun(newRepairRunId).get();
+              newRepairRun = context.storage.getRepairRun(newRepairRun.getId()).get();
               context.repairManager.startRepairRun(newRepairRun);
             } else {
-              LOG.warn("schedule {} has been altered by someone else. not running repair", schedule.getId());
+              LOG.warn(
+                  "schedule {} has been altered by someone else. not running repair",
+                  schedule.getId());
             }
             // this duplicated repair_run needs to be removed from the schedule's history
             // FIXME – concurrency is broken unless we atomically add/remove run history items
@@ -203,13 +211,43 @@ public final class SchedulingManager extends TimerTask {
   }
 
   private static boolean equal(RepairSchedule s1, RepairSchedule s2) {
-    Preconditions.checkArgument(s1.getId().equals(s2.getId()));
-    Preconditions.checkArgument(s1.getOwner().equals(s2.getOwner()));
-    Preconditions.checkArgument(s1.getDaysBetween() == s2.getDaysBetween());
-    Preconditions.checkArgument(s1.getIntensity() == s2.getIntensity());
-    Preconditions.checkArgument(s1.getCreationTime().equals(s2.getCreationTime()));
-    Preconditions.checkArgument(s1.getNextActivation().equals(s2.getNextActivation()));
-    Preconditions.checkArgument(s1.getFollowingActivation().equals(s2.getFollowingActivation()));
+    Preconditions.checkArgument(s1.getId().equals(s2.getId()), "%s does not equal %s", s1.getId(), s2.getId());
+
+    Preconditions.checkArgument(
+        s1.getOwner().equals(s2.getOwner()),
+        "%s does not equal %s",
+        s1.getOwner(),
+        s2.getOwner());
+
+    Preconditions.checkArgument(
+        s1.getDaysBetween() == s2.getDaysBetween(),
+        "%s does not equal %s",
+        s1.getDaysBetween(),
+        s2.getDaysBetween());
+
+    Preconditions.checkArgument(
+        0.01d > Math.abs(s1.getIntensity() - s2.getIntensity()),
+        "%s does not equal %s",
+        s1.getIntensity(),
+        s2.getIntensity());
+
+    Preconditions.checkArgument(
+        s1.getCreationTime().equals(s2.getCreationTime()),
+        "%s does not equal %s",
+        s1.getCreationTime(),
+        s2.getCreationTime());
+
+    Preconditions.checkArgument(
+        s1.getNextActivation().equals(s2.getNextActivation()),
+        "%s does not equal %s",
+        s1.getNextActivation(),
+        s2.getNextActivation());
+
+    Preconditions.checkArgument(
+        s1.getFollowingActivation().equals(s2.getFollowingActivation()),
+        "%s does not equal %s",
+        s1.getFollowingActivation(),
+        s2.getFollowingActivation());
 
     boolean result = s1.getState().equals(s2.getState());
     result &= s1.getRunHistory().size() == s2.getRunHistory().size();

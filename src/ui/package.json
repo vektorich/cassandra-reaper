@@ -6,11 +6,10 @@
   "keywords": [
     "cassandra"
   ],
-  "author": "Stefan Podkowinski <github@midnightdrift.com>",
-  "license": "MIT",
+  "license": "Apache 2.0 License",
   "repository": {
     "type": "git",
-    "url": "https://github.com/spodkowinski/cassandra-reaper-ui.git"
+    "url": "https://github.com/thelastpickle/cassandra-reaper.git"
   },
   "devDependencies": {
     "babel-core": "^4.1.1",
@@ -19,16 +18,26 @@
     "css-loader": "^0.9.1",
     "file-loader": "^0.8.1",
     "jsx-loader": "^0.12.2",
-    "react": "^0.14.0",
-    "react-dom": "^0.14.0",
+    "react": "^15.0.0",
+    "react-dom": "^15.0.0",
     "react-bootstrap": "^0.31.0",
     "react-hot-loader": "^1.2.4",
     "style-loader": "^0.8.3",
     "url-loader": "^0.5.5",
-    "webpack": "^1.7.3",
+    "webpack": "^1.15.0",
     "webpack-dev-server": "^1.7.0",
     "react-tag-input": "^4.7.2",
-    "html-webpack-plugin": "^2.30.1"
+    "html-webpack-plugin": "^2.30.1",
+    "react-notification-system": "^0.2.0",
+    "react-widgets": "^4.3.2",
+    "lodash": "^4.17.10",
+    "moment": "^2.22.2",
+    "react-widgets-moment": "^4.0.15",
+    "raw-loader": "^0.5.1",
+    "sass-loader": "^7.0.3",
+    "scss": "^0.2.4",
+    "node-sass": "^4.9.0",
+    "resolve-url-loader": "^2.3.0"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

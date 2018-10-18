@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -26,7 +29,9 @@ import io.cassandrareaper.storage.MemoryStorage;
 
 import java.util.Collections;
 import java.util.UUID;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
 import javax.management.JMException;
 
 import org.assertj.core.api.Assertions;
@@ -39,6 +44,9 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 
 public final class HeartTest {
+
+  private static final int REPAIR_TIMEOUT_S = 60;
+  private static final int RETRY_DELAY_S = 10;
 
   @Test
   public void testBeat_nullStorage() {
@@ -134,7 +142,14 @@ public final class HeartTest {
     context.config = new ReaperApplicationConfiguration();
     context.config.setDatacenterAvailability(ReaperApplicationConfiguration.DatacenterAvailability.EACH);
 
-    context.repairManager = RepairManager.create(context);
+    context.repairManager = RepairManager.create(
+        context,
+        Executors.newScheduledThreadPool(1),
+        REPAIR_TIMEOUT_S,
+        TimeUnit.SECONDS,
+        RETRY_DELAY_S,
+        TimeUnit.SECONDS);
+
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
 
@@ -157,7 +172,14 @@ public final class HeartTest {
     context.config = new ReaperApplicationConfiguration();
     context.config.setDatacenterAvailability(ReaperApplicationConfiguration.DatacenterAvailability.EACH);
 
-    context.repairManager = RepairManager.create(context);
+    context.repairManager = RepairManager.create(
+        context,
+        Executors.newScheduledThreadPool(1),
+        REPAIR_TIMEOUT_S,
+        TimeUnit.SECONDS,
+        RETRY_DELAY_S,
+        TimeUnit.SECONDS);
+
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
 
@@ -188,7 +210,14 @@ public final class HeartTest {
     context.config.setDatacenterAvailability(ReaperApplicationConfiguration.DatacenterAvailability.EACH);
     context.storage = Mockito.mock(CassandraStorage.class);
 
-    context.repairManager = RepairManager.create(context);
+    context.repairManager = RepairManager.create(
+        context,
+        Executors.newScheduledThreadPool(1),
+        REPAIR_TIMEOUT_S,
+        TimeUnit.SECONDS,
+        RETRY_DELAY_S,
+        TimeUnit.SECONDS);
+
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
 
@@ -207,16 +236,18 @@ public final class HeartTest {
 
     JmxProxy nodeProxy = Mockito.mock(JmxProxy.class);
 
-    Mockito
-        .when(context.jmxConnectionFactory.connect(any(), eq(context.config.getJmxConnectionTimeoutInSeconds())))
+    Mockito.when(
+            context.jmxConnectionFactory.connect(
+                any(), eq(context.config.getJmxConnectionTimeoutInSeconds())))
         .thenReturn(nodeProxy);
 
     HostConnectionCounters hostConnectionCounters = Mockito.mock(HostConnectionCounters.class);
     Mockito.when(context.jmxConnectionFactory.getHostConnectionCounters()).thenReturn(hostConnectionCounters);
 
-    Mockito
-      .when(context.jmxConnectionFactory.connect(any(), eq(context.config.getJmxConnectionTimeoutInSeconds())))
-      .thenThrow(InterruptedException.class);
+    Mockito.when(
+            context.jmxConnectionFactory.connect(
+                any(), eq(context.config.getJmxConnectionTimeoutInSeconds())))
+        .thenThrow(InterruptedException.class);
 
     try (Heart heart = Heart.create(context)) {
       heart.beat();
@@ -238,7 +269,14 @@ public final class HeartTest {
     context.config.setDatacenterAvailability(ReaperApplicationConfiguration.DatacenterAvailability.EACH);
     context.storage = Mockito.mock(CassandraStorage.class);
 
-    context.repairManager = RepairManager.create(context);
+    context.repairManager = RepairManager.create(
+        context,
+        Executors.newScheduledThreadPool(1),
+        REPAIR_TIMEOUT_S,
+        TimeUnit.SECONDS,
+        RETRY_DELAY_S,
+        TimeUnit.SECONDS);
+
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
 
@@ -280,7 +318,14 @@ public final class HeartTest {
     context.config.setDatacenterAvailability(ReaperApplicationConfiguration.DatacenterAvailability.EACH);
     context.storage = Mockito.mock(CassandraStorage.class);
 
-    context.repairManager = RepairManager.create(context);
+    context.repairManager = RepairManager.create(
+        context,
+        Executors.newScheduledThreadPool(1),
+        REPAIR_TIMEOUT_S,
+        TimeUnit.SECONDS,
+        RETRY_DELAY_S,
+        TimeUnit.SECONDS);
+
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
     context.repairManager.repairRunners.put(UUID.randomUUID(), Mockito.mock(RepairRunner.class));
 

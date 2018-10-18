@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -15,6 +18,12 @@
 package io.cassandrareaper.resources.view;
 
 
+import io.cassandrareaper.core.RepairRun;
+
+import java.util.Collections;
+import java.util.UUID;
+
+import org.apache.cassandra.repair.RepairParallelism;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.junit.Test;
@@ -43,5 +52,118 @@ public final class RepairRunStatusTest {
   public void testDateTimeToISO8601() {
     DateTime dateTime = new DateTime(2015, 2, 20, 15, 24, 45, DateTimeZone.UTC);
     assertEquals("2015-02-20T15:24:45Z", RepairRunStatus.dateTimeToIso8601(dateTime));
+  }
+
+  @Test
+  public void testRunningRepairDuration() {
+    RepairRunStatus repairStatus
+        = new RepairRunStatus(
+            UUID.randomUUID(), // runId
+            "test", // clusterName
+            "test", // keyspaceName
+            Collections.EMPTY_LIST, // tables
+            10, // segmentsRepaired
+            100, // totalSegments
+            RepairRun.RunState.RUNNING, // state
+            new DateTime().now().minusMinutes(1), // startTime
+            null, // endTime
+            "test", // cause
+            "alex", // owner
+            "", // lastEvent
+            new DateTime(2018, 4, 11, 15, 00, 00, DateTimeZone.UTC), // creationTime
+            null, // pauseTime
+            0.9, // intensity
+            false, // incremental
+            RepairParallelism.PARALLEL, // repairParellelism
+            Collections.EMPTY_LIST, // nodes
+            Collections.EMPTY_LIST, // datacenters
+            Collections.EMPTY_LIST, // blacklist
+            1); // repair thread count
+
+    assertEquals("1 minute 0 seconds", repairStatus.getDuration());
+  }
+
+  @Test
+  public void testFinishedRepairDuration() {
+    RepairRunStatus repairStatus = new RepairRunStatus(
+            UUID.randomUUID(), // runId
+            "test", // clusterName
+            "test", // keyspaceName
+            Collections.EMPTY_LIST, // tables
+            10, // segmentsRepaired
+            100, // totalSegments
+            RepairRun.RunState.DONE, // state
+            new DateTime().now().minusMinutes(1).minusSeconds(30), // startTime
+            new DateTime().now(), // endTime
+            "test", // cause
+            "alex", // owner
+            "", // lastEvent
+            new DateTime(2018, 4, 11, 15, 00, 00, DateTimeZone.UTC), // creationTime
+            null, // pauseTime
+            0.9, // intensity
+            false, // incremental
+            RepairParallelism.PARALLEL, // repairParellelism
+            Collections.EMPTY_LIST, // nodes
+            Collections.EMPTY_LIST, // datacenters
+            Collections.EMPTY_LIST, // blacklist
+            1); // repair thread count
+
+    assertEquals("1 minute 30 seconds", repairStatus.getDuration());
+  }
+
+  @Test
+  public void testPausedRepairDuration() {
+    RepairRunStatus repairStatus = new RepairRunStatus(
+            UUID.randomUUID(), // runId
+            "test", // clusterName
+            "test", // keyspaceName
+            Collections.EMPTY_LIST, // tables
+            10, // segmentsRepaired
+            100, // totalSegments
+            RepairRun.RunState.PAUSED, // state
+            new DateTime().now().minusMinutes(1).minusSeconds(50), // startTime
+            new DateTime().now(), // endTime
+            "test", // cause
+            "alex", // owner
+            "", // lastEvent
+            new DateTime(2018, 4, 11, 15, 00, 00, DateTimeZone.UTC), // creationTime
+            new DateTime().now().minusMinutes(1), // pauseTime
+            0.9, // intensity
+            false, // incremental
+            RepairParallelism.PARALLEL, // repairParellelism
+            Collections.EMPTY_LIST, // nodes
+            Collections.EMPTY_LIST, // datacenters
+            Collections.EMPTY_LIST, // blacklist
+            1); // repair thread count
+
+    assertEquals("1 minute 50 seconds", repairStatus.getDuration());
+  }
+
+  @Test
+  public void testAbortedRepairDuration() {
+    RepairRunStatus repairStatus = new RepairRunStatus(
+            UUID.randomUUID(), // runId
+            "test", // clusterName
+            "test", // keyspaceName
+            Collections.EMPTY_LIST, // tables
+            10, // segmentsRepaired
+            100, // totalSegments
+            RepairRun.RunState.ABORTED, // state
+            new DateTime().now().minusMinutes(1).minusSeconds(30), // startTime
+            null, // endTime
+            "test", // cause
+            "alex", // owner
+            "", // lastEvent
+            new DateTime(2018, 4, 11, 15, 00, 00, DateTimeZone.UTC), // creationTime
+            new DateTime().now().minusMinutes(1), // pauseTime
+            0.9, // intensity
+            false, // incremental
+            RepairParallelism.PARALLEL, // repairParellelism
+            Collections.EMPTY_LIST, // nodes
+            Collections.EMPTY_LIST, // datacenters
+            Collections.EMPTY_LIST, // blacklist
+            1); // repair thread count
+
+    assertEquals("30 seconds", repairStatus.getDuration());
   }
 }

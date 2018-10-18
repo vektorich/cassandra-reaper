@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -15,10 +18,14 @@
 package io.cassandrareaper.jmx;
 
 import io.cassandrareaper.AppContext;
+import io.cassandrareaper.ReaperApplicationConfiguration.DatacenterAvailability;
 import io.cassandrareaper.core.Cluster;
+import io.cassandrareaper.core.Node;
+import io.cassandrareaper.storage.IDistributedStorage;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -26,8 +33,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
-import com.google.common.base.Optional;
 import com.google.common.collect.Lists;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,30 +55,38 @@ public final class JmxConnectionsInitializer implements AutoCloseable {
   }
 
   public void on(Cluster cluster) {
-    LOG.info("Initializing JMX seed list for cluster {}...", cluster.getName());
-    List<Callable<Optional<String>>> jmxTasks = Lists.newArrayList();
-    List<String> seedHosts = Lists.newArrayList();
-    seedHosts.addAll(cluster.getSeedHosts());
+    if (context.storage instanceof IDistributedStorage
+        && context.config.getDatacenterAvailability() != DatacenterAvailability.ALL) {
+      LOG.info("Initializing JMX seed list for cluster {}...", cluster.getName());
+      List<Callable<Optional<String>>> jmxTasks = Lists.newArrayList();
+      List<String> seedHosts = Lists.newArrayList();
+      seedHosts.addAll(cluster.getSeedHosts());
 
-    for (int i = 0; i < seedHosts.size(); i++) {
-      jmxTasks.add(connectToJmx(Arrays.asList(seedHosts.get(i))));
-      if (i % 10 == 0 || i == seedHosts.size() - 1) {
-        tryConnectingToJmxSeeds(jmxTasks);
-        jmxTasks = Lists.newArrayList();
+      for (int i = 0; i < seedHosts.size(); i++) {
+        jmxTasks.add(connectToJmx(cluster, Arrays.asList(seedHosts.get(i))));
+        if (i % 10 == 0 || i == seedHosts.size() - 1) {
+          tryConnectingToJmxSeeds(jmxTasks);
+          jmxTasks = Lists.newArrayList();
+        }
       }
     }
   }
 
-  private Callable<Optional<String>> connectToJmx(List<String> endpoints) {
+  private Callable<Optional<String>> connectToJmx(Cluster cluster, List<String> endpoints) {
     return () -> {
-      try (JmxProxy jmxProxy = context.jmxConnectionFactory
-              .connectAny(Optional.absent(), endpoints, (int) JmxProxy.DEFAULT_JMX_CONNECTION_TIMEOUT.getSeconds())) {
+      try {
+        JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(
+                endpoints
+                    .stream()
+                    .map(host -> Node.builder().withCluster(cluster).withHostname(host).build())
+                    .collect(Collectors.toList()),
+                (int) JmxProxy.DEFAULT_JMX_CONNECTION_TIMEOUT.getSeconds());
 
         return Optional.of(endpoints.get(0));
 
       } catch (RuntimeException e) {
-        LOG.debug("failed to connect to hosts {} through JMX", endpoints.get(0), e);
-        return Optional.absent();
+        LOG.info("failed to connect to hosts {} through JMX", endpoints.get(0), e);
+        return Optional.empty();
       }
     };
   }

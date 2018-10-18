@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -104,11 +107,12 @@ public final class ReaperTestJettyRunner {
 
     @Override
     public void after() {
+      context.repairManager.close();
       context.isRunning.set(false);
       try {
         Thread.sleep(100);
+        super.after();
       } catch (InterruptedException expected) { }
-      super.after();
     }
 
     private static int getAnyAvailablePort() {

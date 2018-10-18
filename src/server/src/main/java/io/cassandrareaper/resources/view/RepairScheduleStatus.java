@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -82,6 +85,9 @@ public final class RepairScheduleStatus {
   @JsonProperty("segment_count_per_node")
   private int segmentCountPerNode;
 
+  @JsonProperty("repair_thread_count")
+  private int repairThreadCount;
+
   /**
    * Default public constructor Required for Jackson JSON parsing.
    */
@@ -106,7 +112,8 @@ public final class RepairScheduleStatus {
       Collection<String> nodes,
       Collection<String> datacenters,
       Collection<String> blacklistedTables,
-      int segmentCountPerNode) {
+      int segmentCountPerNode,
+      int repairThreadCount) {
 
     this.id = id;
     this.owner = owner;
@@ -126,6 +133,7 @@ public final class RepairScheduleStatus {
     this.datacenters = datacenters;
     this.blacklistedTables = blacklistedTables;
     this.segmentCountPerNode = segmentCountPerNode;
+    this.repairThreadCount = repairThreadCount;
   }
 
   public RepairScheduleStatus(RepairSchedule repairSchedule, RepairUnit repairUnit) {
@@ -147,7 +155,8 @@ public final class RepairScheduleStatus {
         repairUnit.getNodes(),
         repairUnit.getDatacenters(),
         repairUnit.getBlacklistedTables(),
-        repairSchedule.getSegmentCountPerNode());
+        repairSchedule.getSegmentCountPerNode(),
+        repairUnit.getRepairThreadCount());
   }
 
   public UUID getId() {
@@ -335,4 +344,15 @@ public final class RepairScheduleStatus {
   public void setSegmentCountPerNode(int segmentCountPerNode) {
     this.segmentCountPerNode = segmentCountPerNode;
   }
+
+  @JsonProperty("repair_thread_count")
+  public int getRepairThreadCount() {
+    return repairThreadCount;
+  }
+
+  public void setRepairThreadCount(int repairThreadCount) {
+    this.repairThreadCount = repairThreadCount;
+  }
+
+
 }

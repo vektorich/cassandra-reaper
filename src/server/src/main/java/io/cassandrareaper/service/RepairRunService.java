@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,33 +20,32 @@ package io.cassandrareaper.service;
 import io.cassandrareaper.AppContext;
 import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
+import io.cassandrareaper.core.Node;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairUnit;
+import io.cassandrareaper.core.Segment;
 import io.cassandrareaper.jmx.JmxProxy;
-import io.cassandrareaper.service.RingRange;
-import io.cassandrareaper.service.SegmentGenerator;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.CharMatcher;
-import com.google.common.base.Optional;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.cassandra.repair.RepairParallelism;
-import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,6 +55,7 @@ public final class RepairRunService {
 
   public static final Splitter COMMA_SEPARATED_LIST_SPLITTER
       = Splitter.on(',').trimResults(CharMatcher.anyOf(" ()[]\"'")).omitEmptyStrings();
+  public static final int DEFAULT_SEGMENT_COUNT_PER_NODE = 16;
 
   private static final Logger LOG = LoggerFactory.getLogger(RepairRunService.class);
 
@@ -87,8 +90,7 @@ public final class RepairRunService {
 
     // preparing a repair run involves several steps
     // the first step is to generate token segments
-    List<RingRange> tokenSegments =
-        repairUnit.getIncrementalRepair()
+    List<Segment> tokenSegments = repairUnit.getIncrementalRepair()
             ? Lists.newArrayList()
             : generateSegments(cluster, segments, segmentsPerNode, repairUnit);
 
@@ -98,8 +100,12 @@ public final class RepairRunService {
     // the next step is to prepare a repair run objec
     segments = repairUnit.getIncrementalRepair() ? nodes.keySet().size() : tokenSegments.size();
 
-    RepairRun.Builder runBuilder
-        = createNewRepairRun(cluster, repairUnit, cause, owner, segments, repairParallelism, intensity);
+    RepairRun.Builder runBuilder = RepairRun.builder(cluster.getName(), repairUnit.getId())
+        .intensity(intensity)
+        .segmentCount(segments)
+        .repairParallelism(repairParallelism)
+        .cause(cause.orElse("no cause specified"))
+        .owner(owner);
 
     // the last preparation step is to generate actual repair segments
     List<RepairSegment.Builder> segmentBuilders = repairUnit.getIncrementalRepair()
@@ -126,14 +132,11 @@ public final class RepairRunService {
    * @throws ReaperException when fails to discover seeds for the cluster or fails to connect to any
    *     of the nodes in the Cluster.
    */
-  private List<RingRange> generateSegments(
-      Cluster targetCluster,
-      int segmentCount,
-      int segmentCountPerNode,
-      RepairUnit repairUnit)
+  private List<Segment> generateSegments(
+      Cluster targetCluster, int segmentCount, int segmentCountPerNode, RepairUnit repairUnit)
       throws ReaperException {
 
-    List<RingRange> segments = Lists.newArrayList();
+    List<Segment> segments = Lists.newArrayList();
 
     Preconditions.checkNotNull(
         targetCluster.getPartitioner(),
@@ -147,22 +150,40 @@ public final class RepairRunService {
       throw new ReaperException(errMsg);
     }
 
-    try (JmxProxy jmxProxy = context.jmxConnectionFactory
-        .connectAny(Optional.absent(), seedHosts, context.config.getJmxConnectionTimeoutInSeconds())) {
+    try {
+      JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(
+              seedHosts
+                  .stream()
+                  .map(
+                      host ->
+                          Node.builder()
+                              .withClusterName(targetCluster.getName())
+                              .withHostname(host)
+                              .build())
+                  .collect(Collectors.toList()),
+              context.config.getJmxConnectionTimeoutInSeconds());
 
       List<BigInteger> tokens = jmxProxy.getTokens();
       Map<List<String>, List<String>> rangeToEndpoint = jmxProxy.getRangeToEndpointMap(repairUnit.getKeyspaceName());
       Map<String, List<RingRange>> endpointToRange = buildEndpointToRangeMap(rangeToEndpoint);
+      Map<List<String>, List<RingRange>> replicasToRange = buildReplicasToRangeMap(rangeToEndpoint);
+      String cassandraVersion = jmxProxy.getCassandraVersion();
 
       int globalSegmentCount = segmentCount;
       if (globalSegmentCount == 0) {
-        globalSegmentCount = computeGlobalSegmentCount(segmentCountPerNode, rangeToEndpoint, endpointToRange);
+        globalSegmentCount = computeGlobalSegmentCount(segmentCountPerNode, endpointToRange);
       }
 
       segments = filterSegmentsByNodes(
-              sg.generateSegments(globalSegmentCount, tokens, repairUnit.getIncrementalRepair()),
+              sg.generateSegments(
+                  globalSegmentCount,
+                  tokens,
+                  repairUnit.getIncrementalRepair(),
+                  replicasToRange,
+                  cassandraVersion),
               repairUnit,
               endpointToRange);
+
     } catch (ReaperException e) {
       LOG.warn("couldn't connect to any host: {}, life sucks...", seedHosts, e);
     }
@@ -177,25 +198,15 @@ public final class RepairRunService {
 
   static int computeGlobalSegmentCount(
       int segmentCountPerNode,
-      Map<List<String>, List<String>> rangeToEndpoint,
       Map<String, List<RingRange>> endpointToRange) {
+    Preconditions.checkArgument(1 <= endpointToRange.keySet().size());
 
-    int nodeCount = Math.max(1, endpointToRange.keySet().size());
-    int tokenRangeCount = rangeToEndpoint.keySet().size();
-
-    if (segmentCountPerNode < (tokenRangeCount / nodeCount) && segmentCountPerNode > 0) {
-      return tokenRangeCount;
-    }
-
-    if (segmentCountPerNode == 0) {
-      return Math.max(16 * nodeCount, tokenRangeCount);
-    }
-
-    return segmentCountPerNode * nodeCount;
+    return endpointToRange.keySet().size()
+        * (segmentCountPerNode != 0 ? segmentCountPerNode : DEFAULT_SEGMENT_COUNT_PER_NODE);
   }
 
-  static List<RingRange> filterSegmentsByNodes(
-      List<RingRange> segments,
+  static List<Segment> filterSegmentsByNodes(
+      List<Segment> segments,
       RepairUnit repairUnit,
       Map<String, List<RingRange>> endpointToRange)
       throws ReaperException {
@@ -207,10 +218,11 @@ public final class RepairRunService {
           .stream()
           .filter(
               segment -> {
+                RingRange firstRange = segment.getBaseRange();
                 for (Entry<String, List<RingRange>> entry : endpointToRange.entrySet()) {
                   if (repairUnit.getNodes().contains(entry.getKey())) {
                     for (RingRange range : entry.getValue()) {
-                      if (range.encloses(segment)) {
+                      if (range.encloses(firstRange)) {
                         return true;
                       }
                     }
@@ -238,32 +250,30 @@ public final class RepairRunService {
     return endpointToRange;
   }
 
-  /**
-   * Instantiates a RepairRun and stores it in the storage backend.
-   *
-   * @return the new, just stored RepairRun instance
-   * @throws ReaperException when fails to store the RepairRun.
-   */
-  private static RepairRun.Builder createNewRepairRun(
-      Cluster cluster,
-      RepairUnit repairUnit,
-      Optional<String> cause,
-      String owner,
-      int segments,
-      RepairParallelism repairParallelism,
-      Double intensity) throws ReaperException {
+  @VisibleForTesting
+  static Map<List<String>, List<RingRange>> buildReplicasToRangeMap(
+      Map<List<String>, List<String>> rangeToEndpoint) {
+    Map<List<String>, List<RingRange>> replicasToRange = Maps.newHashMap();
 
-    return new RepairRun.Builder(
-        cluster.getName(), repairUnit.getId(), DateTime.now(), intensity, segments, repairParallelism)
-        .cause(cause.or("no cause specified"))
-        .owner(owner);
+    for (Entry<List<String>, List<String>> entry : rangeToEndpoint.entrySet()) {
+      RingRange range = new RingRange(entry.getKey().toArray(new String[entry.getKey().size()]));
+      List<String> sortedReplicas = entry.getValue().stream().sorted().collect(Collectors.toList());
+
+      List<RingRange> ranges = replicasToRange.getOrDefault(sortedReplicas, Lists.newArrayList());
+      ranges.add(range);
+      replicasToRange.put(sortedReplicas, ranges);
+
+    }
+
+    return replicasToRange;
   }
 
   /**
-   * Creates the repair runs linked to given RepairRun and stores them directly in the storage backend.
+   * Creates the repair runs linked to given RepairRun and stores them directly in the storage
+   * backend.
    */
   private static List<RepairSegment.Builder> createRepairSegments(
-      List<RingRange> tokenSegments,
+      List<Segment> tokenSegments,
       RepairUnit repairUnit) {
 
     List<RepairSegment.Builder> repairSegmentBuilders = Lists.newArrayList();
@@ -284,9 +294,14 @@ public final class RepairRunService {
     nodes
         .entrySet()
         .forEach(
-            range
-              -> repairSegmentBuilders.add(
-                  RepairSegment.builder(range.getValue(), repairUnit.getId()).coordinatorHost(range.getKey())));
+            range ->
+                repairSegmentBuilders.add(
+                    RepairSegment.builder(
+                            Segment.builder()
+                                .withTokenRanges(Arrays.asList(range.getValue()))
+                                .build(),
+                            repairUnit.getId())
+                        .withCoordinatorHost(range.getKey())));
 
     return repairSegmentBuilders;
   }
@@ -303,8 +318,13 @@ public final class RepairRunService {
 
     Map<List<String>, List<String>> rangeToEndpoint = Maps.newHashMap();
 
-    try (JmxProxy jmxProxy = context.jmxConnectionFactory
-        .connectAny(Optional.absent(), seedHosts, context.config.getJmxConnectionTimeoutInSeconds())) {
+    try {
+      JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(
+              seedHosts
+                  .stream()
+                  .map(host -> Node.builder().withCluster(targetCluster).withHostname(host).build())
+                  .collect(Collectors.toList()),
+              context.config.getJmxConnectionTimeoutInSeconds());
 
       rangeToEndpoint = jmxProxy.getRangeToEndpointMap(repairUnit.getKeyspaceName());
     } catch (ReaperException e) {
@@ -327,15 +347,16 @@ public final class RepairRunService {
       Optional<String> tableNamesParam) throws ReaperException {
 
     Set<String> knownTables;
-    try (JmxProxy jmxProxy = context.jmxConnectionFactory
-        .connectAny(cluster, context.config.getJmxConnectionTimeoutInSeconds())) {
 
-      knownTables = jmxProxy.getTableNamesForKeyspace(keyspace);
-      if (knownTables.isEmpty()) {
-        LOG.debug("no known tables for keyspace {} in cluster {}", keyspace, cluster.getName());
-        throw new IllegalArgumentException("no column families found for keyspace");
-      }
+    JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(
+            cluster, context.config.getJmxConnectionTimeoutInSeconds());
+
+    knownTables = jmxProxy.getTableNamesForKeyspace(keyspace);
+    if (knownTables.isEmpty()) {
+      LOG.debug("no known tables for keyspace {} in cluster {}", keyspace, cluster.getName());
+      throw new IllegalArgumentException("no column families found for keyspace");
     }
+
     Set<String> tableNames = Collections.emptySet();
     if (tableNamesParam.isPresent() && !tableNamesParam.get().isEmpty()) {
       tableNames = Sets.newHashSet(COMMA_SEPARATED_LIST_SPLITTER.split(tableNamesParam.get()));
@@ -353,15 +374,16 @@ public final class RepairRunService {
       Optional<String> nodesToRepairParam) throws ReaperException {
 
     Set<String> nodesInCluster;
-    try (JmxProxy jmxProxy
-        = context.jmxConnectionFactory.connectAny(cluster, context.config.getJmxConnectionTimeoutInSeconds())) {
 
-      nodesInCluster = jmxProxy.getEndpointToHostId().keySet();
-      if (nodesInCluster.isEmpty()) {
-        LOG.debug("no nodes found in cluster {}", cluster.getName());
-        throw new IllegalArgumentException("no nodes found in cluster");
-      }
+    JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(
+            cluster, context.config.getJmxConnectionTimeoutInSeconds());
+
+    nodesInCluster = jmxProxy.getEndpointToHostId().keySet();
+    if (nodesInCluster.isEmpty()) {
+      LOG.debug("no nodes found in cluster {}", cluster.getName());
+      throw new IllegalArgumentException("no nodes found in cluster");
     }
+
     Set<String> nodesToRepair = Collections.emptySet();
     if (nodesToRepairParam.isPresent() && !nodesToRepairParam.get().isEmpty()) {
       nodesToRepair = Sets.newHashSet(COMMA_SEPARATED_LIST_SPLITTER.split(nodesToRepairParam.get()));

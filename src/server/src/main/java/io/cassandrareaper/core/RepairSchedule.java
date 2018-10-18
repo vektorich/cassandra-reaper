@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -19,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.cassandra.repair.RepairParallelism;
@@ -55,6 +59,10 @@ public final class RepairSchedule {
     this.owner = builder.owner;
     this.pauseTime = builder.pauseTime;
     this.segmentCountPerNode = builder.segmentCountPerNode;
+  }
+
+  public static Builder builder(UUID repairUnitId) {
+    return new Builder(repairUnitId);
   }
 
   public UUID getId() {
@@ -125,49 +133,35 @@ public final class RepairSchedule {
     return new Builder(this);
   }
 
+  @Override
+  public String toString() {
+    return String.format("%s[%s]", getClass().getSimpleName(), id.toString());
+  }
+
   public enum State {
     ACTIVE,
     PAUSED,
     DELETED
   }
 
-  public static class Builder {
+  public static final class Builder {
 
     public final UUID repairUnitId;
-    private State state;
-    private int daysBetween;
+    private State state = RepairSchedule.State.ACTIVE;
+    private Integer daysBetween;
     private DateTime nextActivation;
-    private ImmutableList<UUID> runHistory;
-    @Deprecated private int segmentCount;
+    private ImmutableList<UUID> runHistory = ImmutableList.<UUID>of();
+    @Deprecated private int segmentCount = 0;
     private RepairParallelism repairParallelism;
-    private double intensity;
-    private DateTime creationTime;
-    private String owner;
+    private Double intensity;
+    private DateTime creationTime = DateTime.now();
+    private String owner = "";
     private DateTime pauseTime;
-    private int segmentCountPerNode;
+    private Integer segmentCountPerNode;
+    private boolean majorCompaction = false;
 
-
-    public Builder(
-        UUID repairUnitId,
-        State state,
-        int daysBetween,
-        DateTime nextActivation,
-        ImmutableList<UUID> runHistory,
-        int segmentCount,
-        RepairParallelism repairParallelism,
-        double intensity,
-        DateTime creationTime,
-        int segmentCountPerNode) {
+    private Builder(UUID repairUnitId) {
       this.repairUnitId = repairUnitId;
-      this.state = state;
-      this.daysBetween = daysBetween;
-      this.nextActivation = nextActivation;
-      this.runHistory = runHistory;
-      this.segmentCount = segmentCount;
-      this.repairParallelism = repairParallelism;
-      this.intensity = intensity;
-      this.creationTime = creationTime;
-      this.segmentCountPerNode = segmentCountPerNode;
     }
 
     private Builder(RepairSchedule original) {
@@ -242,6 +236,11 @@ public final class RepairSchedule {
     }
 
     public RepairSchedule build(UUID id) {
+      Preconditions.checkState(null != daysBetween, "daysBetween(..) must be called before build(..)");
+      Preconditions.checkState(null != nextActivation, "nextActivation(..) must be called before build(..)");
+      Preconditions.checkState(null != repairParallelism, "repairParallelism(..) must be called before build(..)");
+      Preconditions.checkState(null != intensity, "intensity(..) must be called before build(..)");
+      Preconditions.checkState(null != segmentCountPerNode, "segmentCountPerNode(..) must be called before build(..)");
       return new RepairSchedule(this, id);
     }
   }

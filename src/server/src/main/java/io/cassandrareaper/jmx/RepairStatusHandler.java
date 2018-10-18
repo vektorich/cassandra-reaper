@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,7 +17,8 @@
 
 package io.cassandrareaper.jmx;
 
-import com.google.common.base.Optional;
+import java.util.Optional;
+
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.utils.progress.ProgressEventType;
 
@@ -24,8 +28,8 @@ public interface RepairStatusHandler {
   /**
    * Handle an event representing a change in the state of a running repair.
    *
-   * <p>
-   * Implementation of this method is intended to persist the repair state change in Reaper's state.
+   * <p>Implementation of this method is intended to persist the repair state change in Reaper's
+   * state.
    *
    * @param repairNumber repair sequence number, obtained when triggering a repair
    * @param status new status of the repair (old API)
@@ -36,5 +40,6 @@ public interface RepairStatusHandler {
       int repairNumber,
       Optional<ActiveRepairService.Status> status,
       Optional<ProgressEventType> progress,
-      String message);
+      String message,
+      JmxProxy jmxProxy);
 }

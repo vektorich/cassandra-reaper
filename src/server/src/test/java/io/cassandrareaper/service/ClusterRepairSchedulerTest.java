@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -22,21 +25,19 @@ import io.cassandrareaper.core.RepairSchedule;
 import io.cassandrareaper.core.RepairUnit;
 import io.cassandrareaper.jmx.JmxConnectionFactory;
 import io.cassandrareaper.jmx.JmxProxy;
-import io.cassandrareaper.service.ClusterRepairScheduler;
 import io.cassandrareaper.storage.MemoryStorage;
 
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 
-import com.google.common.base.Optional;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.apache.cassandra.repair.RepairParallelism;
 import org.joda.time.DateTime;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import static java.lang.String.format;
 import static org.fest.assertions.api.Assertions.assertThat;
@@ -69,11 +70,7 @@ public final class ClusterRepairSchedulerTest {
     when(context.jmxConnectionFactory.connectAny(CLUSTER, context.config.getJmxConnectionTimeoutInSeconds()))
         .thenReturn(jmxProxy);
 
-    when(
-        context.jmxConnectionFactory.connectAny(
-            Optional.absent(),
-            CLUSTER.getSeedHosts(),
-            context.config.getJmxConnectionTimeoutInSeconds()))
+    when(context.jmxConnectionFactory.connectAny(Mockito.anyCollection(), Mockito.anyInt()))
         .thenReturn(jmxProxy);
   }
 
@@ -193,28 +190,24 @@ public final class ClusterRepairSchedulerTest {
 
   private RepairSchedule.Builder aRepairSchedule(Cluster cluster, String keyspace, DateTime creationTime) {
     RepairUnit repairUnit = context.storage.addRepairUnit(aRepair(cluster, keyspace));
-    return new RepairSchedule.Builder(
-        repairUnit.getId(),
-        RepairSchedule.State.ACTIVE,
-        1,
-        DateTime.now(),
-        ImmutableList.of(),
-        10,
-        RepairParallelism.DATACENTER_AWARE,
-        0.9,
-        creationTime,
-        0);
+
+    return RepairSchedule.builder(repairUnit.getId())
+        .creationTime(creationTime)
+        .daysBetween(1)
+        .nextActivation(DateTime.now())
+        .repairParallelism(RepairParallelism.DATACENTER_AWARE)
+        .intensity(0.9)
+        .segmentCount(10)
+        .segmentCountPerNode(0);
+
   }
 
   private RepairUnit.Builder aRepair(Cluster cluster, String keyspace) {
-    return new RepairUnit.Builder(
-        cluster.getName(),
-        keyspace,
-        Collections.emptySet(),
-        Boolean.FALSE,
-        Collections.emptySet(),
-        Collections.emptySet(),
-        Collections.emptySet());
+    return RepairUnit.builder()
+        .clusterName(cluster.getName())
+        .keyspaceName(keyspace)
+        .incrementalRepair(Boolean.FALSE)
+        .repairThreadCount(1);
   }
 
   private ClusterRepairScheduleAssertion assertThatClusterRepairSchedules(Collection<RepairSchedule> repairSchedules) {
@@ -237,8 +230,7 @@ public final class ClusterRepairSchedulerTest {
     ClusterRepairScheduleAssertion.RepairScheduleAssertion repairScheduleForKeyspace(String keyspace) {
       RepairSchedule keyspaceRepairSchedule = repairSchedules.stream()
           .filter(repairSchedule
-              -> context.storage
-                  .getRepairUnit(repairSchedule.getRepairUnitId()).get().getKeyspaceName().equals(keyspace))
+              -> context.storage.getRepairUnit(repairSchedule.getRepairUnitId()).getKeyspaceName().equals(keyspace))
           .findFirst()
           .orElseThrow(() -> new AssertionError(format("No repair schedule found for keyspace %s", keyspace)));
       return new ClusterRepairScheduleAssertion.RepairScheduleAssertion(keyspaceRepairSchedule);

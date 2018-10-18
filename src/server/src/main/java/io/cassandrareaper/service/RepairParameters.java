@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,6 +17,8 @@
 
 package io.cassandrareaper.service;
 
+import io.cassandrareaper.core.Segment;
+
 import java.util.Set;
 
 import org.apache.cassandra.repair.RepairParallelism;
@@ -23,13 +28,13 @@ import org.apache.cassandra.repair.RepairParallelism;
  */
 public final class RepairParameters {
 
-  public final RingRange tokenRange;
+  public final Segment tokenRange;
   public final String keyspaceName;
   public final Set<String> columnFamilies;
   public final RepairParallelism repairParallelism;
 
   public RepairParameters(
-      RingRange tokenRange,
+      Segment tokenRange,
       String keyspaceName,
       Set<String> columnFamilies,
       RepairParallelism repairParallelism) {

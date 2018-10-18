@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,6 +17,7 @@
 
 package io.cassandrareaper.storage.postgresql;
 
+import io.cassandrareaper.core.Segment;
 import io.cassandrareaper.service.RepairParameters;
 import io.cassandrareaper.service.RingRange;
 
@@ -50,7 +54,7 @@ public final class RepairParametersMapper implements ResultSetMapper<RepairParam
     RepairParallelism repairParallelism = RepairParallelism.fromName(repairParallelismStr);
 
     return new RepairParameters(
-        range,
+        Segment.builder().withTokenRange(range).build(),
         rs.getString("keyspace_name"),
         Sets.newHashSet(columnFamilies),
         repairParallelism);

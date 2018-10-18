@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,8 +17,12 @@
 
 package io.cassandrareaper.core;
 
+import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+
+import com.google.common.base.Preconditions;
 
 public final class RepairUnit {
 
@@ -23,10 +30,11 @@ public final class RepairUnit {
   private final String clusterName;
   private final String keyspaceName;
   private final Set<String> columnFamilies;
-  private final Boolean incrementalRepair;
+  private final boolean incrementalRepair;
   private final Set<String> nodes;
   private final Set<String> datacenters;
   private final Set<String> blacklistedTables;
+  private final int repairThreadCount;
 
   private RepairUnit(Builder builder, UUID id) {
     this.id = id;
@@ -37,6 +45,11 @@ public final class RepairUnit {
     this.nodes = builder.nodes;
     this.datacenters = builder.datacenters;
     this.blacklistedTables = builder.blacklistedTables;
+    this.repairThreadCount = builder.repairThreadCount;
+  }
+
+  public static Builder builder() {
+    return new Builder();
   }
 
   public UUID getId() {
@@ -55,7 +68,7 @@ public final class RepairUnit {
     return columnFamilies;
   }
 
-  public Boolean getIncrementalRepair() {
+  public boolean getIncrementalRepair() {
     return incrementalRepair;
   }
 
@@ -71,36 +84,26 @@ public final class RepairUnit {
     return blacklistedTables;
   }
 
+  public int getRepairThreadCount() {
+    return repairThreadCount;
+  }
+
   public Builder with() {
     return new Builder(this);
   }
 
-  public static class Builder {
+  public static final class Builder {
 
-    public final String clusterName;
-    public final String keyspaceName;
-    public final Set<String> columnFamilies;
-    public final boolean incrementalRepair;
-    public final Set<String> nodes;
-    public final Set<String> datacenters;
-    public final Set<String> blacklistedTables;
+    public String clusterName;
+    public String keyspaceName;
+    public Set<String> columnFamilies = Collections.emptySet();
+    public Boolean incrementalRepair;
+    public Set<String> nodes = Collections.emptySet();
+    public Set<String> datacenters = Collections.emptySet();
+    public Set<String> blacklistedTables = Collections.emptySet();
+    public Integer repairThreadCount;
 
-    public Builder(
-        String clusterName,
-        String keyspaceName,
-        Set<String> columnFamilies,
-        Boolean incrementalRepair,
-        Set<String> nodes,
-        Set<String> datacenters,
-        Set<String> blacklistedTables) {
-      this.clusterName = clusterName;
-      this.keyspaceName = keyspaceName;
-      this.columnFamilies = columnFamilies;
-      this.incrementalRepair = incrementalRepair;
-      this.nodes = nodes;
-      this.datacenters = datacenters;
-      this.blacklistedTables = blacklistedTables;
-    }
+    private Builder() {}
 
     private Builder(RepairUnit original) {
       clusterName = original.clusterName;
@@ -110,10 +113,94 @@ public final class RepairUnit {
       nodes = original.nodes;
       datacenters = original.datacenters;
       blacklistedTables = original.blacklistedTables;
+      repairThreadCount = original.repairThreadCount;
+    }
+
+    public Builder clusterName(String clusterName) {
+      this.clusterName = clusterName;
+      return this;
+    }
+
+    public Builder keyspaceName(String keyspaceName) {
+      this.keyspaceName = keyspaceName;
+      return this;
+    }
+
+    public Builder columnFamilies(Set<String> columnFamilies) {
+      this.columnFamilies = Collections.unmodifiableSet(columnFamilies);
+      return this;
+    }
+
+    public Builder incrementalRepair(boolean incrementalRepair) {
+      this.incrementalRepair = incrementalRepair;
+      return this;
+    }
+
+    public Builder nodes(Set<String> nodes) {
+      this.nodes = Collections.unmodifiableSet(nodes);
+      return this;
+    }
+
+    public Builder datacenters(Set<String> datacenters) {
+      this.datacenters = Collections.unmodifiableSet(datacenters);
+      return this;
+    }
+
+    public Builder blacklistedTables(Set<String> blacklistedTables) {
+      this.blacklistedTables = Collections.unmodifiableSet(blacklistedTables);
+      return this;
+    }
+
+    public Builder repairThreadCount(int repairThreadCount) {
+      this.repairThreadCount = repairThreadCount;
+      return this;
     }
 
     public RepairUnit build(UUID id) {
+      Preconditions.checkState(null != clusterName, "clusterName(..) must be called before build(..)");
+      Preconditions.checkState(null != keyspaceName, "keyspaceName(..) must be called before build(..)");
+      Preconditions.checkState(null != incrementalRepair, "incrementalRepair(..) must be called before build(..)");
+      Preconditions.checkState(null != repairThreadCount, "repairThreadCount(..) must be called before build(..)");
       return new RepairUnit(this, id);
+    }
+
+    @Override
+    public int hashCode() {
+      // primes 7 & 59 chosen as optimal by netbeans – https://stackoverflow.com/a/21914964
+      int hash = 7 * 59;
+      hash +=  Objects.hashCode(this.clusterName);
+      hash *= 59;
+      hash +=  Objects.hashCode(this.keyspaceName);
+      hash *= 59;
+      hash +=  Objects.hashCode(this.columnFamilies);
+      hash *= 59;
+      hash +=  (this.incrementalRepair ? 2 : 1);
+      hash *= 59;
+      hash +=  Objects.hashCode(this.nodes);
+      hash *= 59;
+      hash +=  Objects.hashCode(this.datacenters);
+      hash *= 59;
+      hash +=  Objects.hashCode(this.blacklistedTables);
+      return hash;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (null == obj || getClass() != obj.getClass()) {
+        return false;
+      }
+
+      return Objects.equals(this.incrementalRepair, ((Builder) obj).incrementalRepair)
+          && Objects.equals(this.clusterName, ((Builder) obj).clusterName)
+          && Objects.equals(this.keyspaceName, ((Builder) obj).keyspaceName)
+          && Objects.equals(this.columnFamilies, ((Builder) obj).columnFamilies)
+          && Objects.equals(this.nodes, ((Builder) obj).nodes)
+          && Objects.equals(this.datacenters, ((Builder) obj).datacenters)
+          && Objects.equals(this.blacklistedTables, ((Builder) obj).blacklistedTables)
+          && Objects.equals(this.repairThreadCount, ((Builder) obj).repairThreadCount);
     }
   }
 }

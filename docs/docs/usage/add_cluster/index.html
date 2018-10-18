@@ -13,13 +13,13 @@
 
   
 
-  <meta name="generator" content="Hugo 0.26" />
+  <meta name="generator" content="Hugo 0.40.3" />
 
   <link href='//fonts.googleapis.com/css?family=Roboto:400,100,100italic,300,300italic,500,700,800' rel='stylesheet' type='text/css'>
 
   
-  <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
-  <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
 
   
   <link href="http://cassandra-reaper.io/css/animate.css" rel="stylesheet">
@@ -151,7 +151,6 @@
     <div class="container">
         <div class="row">
             <div class="col-md-12">
-                <h1></h1>
             </div>
         </div>
     </div>
@@ -186,6 +185,15 @@
         
     </ul>
     
+    </li>
+    
+    
+    <li>
+        <a href="/docs/concepts/">
+            
+            <span>Core Concepts</span>
+        </a>
+        
     </li>
     
     
@@ -233,22 +241,40 @@
     
 
     <li class="sub-menu">
-    <a href="/docs/usage/" class="">
+    <a href="/docs/metrics/" class="">
         
-        <span>Usage</span>
+        <span>Metrics</span>
         <span class="menu-arrow arrow_carrot-right"></span>
     </a>
     <ul class="sub">
         
-        <li><a href="/docs/usage/add_cluster/"> Add a Cluster </a> </li>
+        <li><a href="/docs/metrics/graphite/"> Graphite Reporter </a> </li>
         
-        <li><a href="/docs/usage/health/"> Check Cluster Health </a> </li>
+    </ul>
+    
+    </li>
+    
+    
+
+    <li class="sub-menu">
+    <a href="/docs/usage/" class="">
         
-        <li><a href="/docs/usage/single/"> Running a Repair </a> </li>
+        <span>Using Reaper</span>
+        <span class="menu-arrow arrow_carrot-right"></span>
+    </a>
+    <ul class="sub">
         
-        <li><a href="/docs/usage/schedule/"> Scheduling Repairs </a> </li>
+        <li><a href="/docs/usage/add_cluster/"> Adding a Cluster </a> </li>
         
-        <li><a href="/docs/usage/multi_dc/"> Multi DC </a> </li>
+        <li><a href="/docs/usage/health/"> Checking a Cluster&#39;s Health </a> </li>
+        
+        <li><a href="/docs/usage/single/"> Running a Cluster Repair </a> </li>
+        
+        <li><a href="/docs/usage/schedule/"> Scheduling a Cluster Repair </a> </li>
+        
+        <li><a href="/docs/usage/multi_dc/"> Operating with a Multi DC Cluster </a> </li>
+        
+        <li><a href="/docs/usage/authentication/"> Activating Web UI Authentication </a> </li>
         
     </ul>
     
@@ -279,7 +305,9 @@
                         <div>
                           
 
-<h1 id="add-a-cluster">Add A Cluster</h1>
+<h1 id="adding-a-cluster">Adding a Cluster</h1>
+
+<p>Enter an address of one of the nodes in the cluster, then click <em>Add Cluster</em> Reaper will contact that node and find the rest of the nodes in the cluster automatically.</p>
 
 <div class = "row">
     <div class = "col-md-6">
@@ -288,11 +316,9 @@
         </a>
     </div>
     <div>
-        <h4>Add a cluster for Reaper to manage repairs on.</h4>
+        <h4></h4>
 
-        Enter an address of one of the nodes in the cluster.  Reaper will contact that node and find the rest of the nodes in the cluster automatically.</p>
-
-<p>Once you&rsquo;ve done this, you&rsquo;ll see the <a href="../health">Cluster Health</a>.
+        
     </div>
 
 </div>
@@ -303,6 +329,43 @@
 
 
 
+
+<p><br/></p>
+
+<p>Once successfully completed, the Cluster&rsquo;s <a href="../health">health</a> will be displayed.</p>
+
+<p><br/></p>
+
+<p>If JMX authentication is required and all clusters share the same credentials, they have to be filled in the Reaper YAML file, under <code>jmxAuth</code> (see the <a href="../../configuration/reaper_specific">configuration reference</a>).</p>
+
+<h2 id="specific-jmx-credentials-per-cluster">Specific JMX credentials per cluster</h2>
+
+<p><em><strong>Since 1.1.0</strong></em></p>
+
+<p>If the clusters require authentication for JMX access, credentials will need to be filled in the reaper yaml configuration file. See the <code>jmxCredentials</code> setting in the <a href="../../configuration/reaper_specific">configuration reference</a> for detailed informations.</p>
+
+<div class = "row">
+    <div class = "col-md-6">
+        <a data-fancybox="gallery" href="/img/reaper_jmx_cred_add_cluster.png">
+        <img src="/img/reaper_jmx_cred_add_cluster.png" class="img-responsive">
+        </a>
+    </div>
+    <div>
+        <h4></h4>
+
+        
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+<p>When using <code>jmxCredentials</code> (if each cluster has specific credentials), the name of the cluster will need to be indicated in the seed node address.</p>
 
                         </div>
 
@@ -377,7 +440,7 @@ ga('send', 'pageview');
 
 <script src="/js/jquery-3.2.1.min.js"></script>
 
-<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
 
 <script src="//cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
 <script src="//cdnjs.cloudflare.com/ajax/libs/waypoints/4.0.1/jquery.waypoints.min.js"></script>

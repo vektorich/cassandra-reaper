@@ -1,5 +1,22 @@
+//
+//  Copyright 2015-2016 Stefan Podkowinski
+//  Copyright 2016-2018 The Last Pickle Ltd
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 import React from "react";
 import { WithContext as ReactTags } from 'react-tag-input';
+import { getUrlPrefix } from "jsx/mixin";
 import $ from "jquery";
 
 
@@ -12,16 +29,15 @@ const repairForm = React.createClass({
   },
 
   getInitialState: function() {
-    const isDev = window != window.top;
-    const URL_PREFIX = isDev ? 'http://127.0.0.1:8080' : '';
-
+    const URL_PREFIX = getUrlPrefix(window.top.location.pathname);
+    
     return {
       addRepairResultMsg: null, clusterNames: [], submitEnabled: false,
       clusterName: this.props.currentCluster!="all"?this.props.currentCluster:this.props.clusterNames[0], keyspace: "", tables: "", owner: null, segments: null,
-      parallism: null, intensity: null, cause: null, incrementalRepair: null, formCollapsed: true, nodes: "", datacenters: "", blacklistedTables: "",
+      parallelism: null, intensity: null, cause: null, incrementalRepair: null, formCollapsed: true, nodes: "", datacenters: "", blacklistedTables: "",
       nodeList: [], datacenterList: [], clusterStatus: {}, urlPrefix: URL_PREFIX, nodeSuggestions: [], datacenterSuggestions: [], tableSuggestions: [], 
       clusterTables: {}, blacklistSuggestions: [], tableList: [], blacklistList: [], keyspaceList: [], keyspaceSuggestions: [],
-      blacklistReadOnly: false, tablelistReadOnly: false, advancedFormCollapsed: true
+      blacklistReadOnly: false, tablelistReadOnly: false, advancedFormCollapsed: true, repairThreadCount: 1
     };
   },
 
@@ -99,13 +115,14 @@ const repairForm = React.createClass({
     };
     if(this.state.tables) repair.tables = this.state.tables;
     if(this.state.segments) repair.segmentCount = this.state.segments;
-    if(this.state.parallism) repair.repairParallelism = this.state.parallism;
+    if(this.state.parallelism) repair.repairParallelism = this.state.parallelism;
     if(this.state.intensity) repair.intensity = this.state.intensity;
     if(this.state.cause) repair.cause = this.state.cause;
     if(this.state.incrementalRepair) repair.incrementalRepair = this.state.incrementalRepair;
     if(this.state.nodes) repair.nodes = this.state.nodes;
     if(this.state.datacenters) repair.datacenters = this.state.datacenters;
     if(this.state.blacklistedTables) repair.blacklistedTables = this.state.blacklistedTables;
+    if(this.state.repairThreadCount && this.state.repairThreadCount > 0) repair.repairThreadCount = this.state.repairThreadCount;
 
     // Force incremental repair to FALSE if empty
     if(!this.state.incrementalRepair) repair.incrementalRepair = "false";
@@ -116,15 +133,17 @@ const repairForm = React.createClass({
   _handleChange: function(e) {
     var v = e.target.value;
     var n = e.target.id.substring(3); // strip in_ prefix
-    if (n == 'clusterName') {
-      this._getClusterStatus();
-    }
+    console.log(n + " = " + v)
 
     // update state
     const state = this.state;
     state[n] = v;
     this.replaceState(state);
-
+    
+    if (n == 'clusterName') {
+      this._getClusterStatus();
+    }
+    
     // validate
     this._checkValidity();
   },
@@ -324,7 +343,7 @@ const repairForm = React.createClass({
       addMsg = <div className="alert alert-danger" role="alert">{this.state.addRepairResultMsg}</div>
     }
 
-    const clusterItems = this.state.clusterNames.map(name =>
+    const clusterItems = this.state.clusterNames.sort().map(name =>
       <option key={name} value={name}>{name}</option>
     );
 
@@ -348,9 +367,9 @@ const repairForm = React.createClass({
     const keyspaceInputStyle = this.state.keyspaceList.length > 0 ? 'form-control-hidden':'form-control';
 
     const advancedSettingsHeader = <div className="panel-title" >
-    <a href="#advanced-form" data-toggle="collapse" onClick={this._toggleAdvancedSettingsDisplay}>Advanced settings</a>
+    <a href="#advanced-form" data-toggle="collapse" onClick={this._toggleAdvancedSettingsDisplay}>Advanced settings
     &nbsp; <span className="glyphicon glyphicon-menu-down" aria-hidden="true" style={advancedMenuDownStyle}></span>
-           <span className="glyphicon glyphicon-menu-up" aria-hidden="true" style={advancedMenuUpStyle}></span></div>
+           <span className="glyphicon glyphicon-menu-up" aria-hidden="true" style={advancedMenuUpStyle}></span></a></div>
 
 
     const form = <div className="row">
@@ -478,10 +497,10 @@ const repairForm = React.createClass({
                       </div>
                     </div>
                     <div className="form-group">
-                      <label htmlFor="in_parallism" className="col-sm-3 control-label">Parallism</label>
+                      <label htmlFor="in_parallelism" className="col-sm-3 control-label">Parallelism</label>
                       <div className="col-sm-14 col-md-12 col-lg-9">
-                        <select className="form-control" id="in_parallism"
-                          onChange={this._handleChange} value={this.state.parallism}>
+                        <select className="form-control" id="in_parallelism"
+                          onChange={this._handleChange} value={this.state.parallelism}>
                           <option value=""></option>
                           <option value="SEQUENTIAL">Sequential</option>
                           <option value="PARALLEL">Parallel</option>
@@ -505,6 +524,14 @@ const repairForm = React.createClass({
                           <option value="false">false</option>
                           <option value="true">true</option>
                         </select>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="in_repairThreadCount" className="col-sm-3 control-label">Repair threads</label>
+                      <div className="col-sm-14 col-md-12 col-lg-9">
+                        <input type="number" className="form-control" value={this.state.repairThreadCount}
+                          min="1" max="4"
+                          onChange={this._handleChange} id="in_repairThreadCount" placeholder="repair threads"/>
                       </div>
                     </div>
                   </div>
@@ -541,7 +568,7 @@ const repairForm = React.createClass({
       }
     }
 
-    const formHeader = <div className="panel-title" ><a href="#repair-form" data-toggle="collapse" onClick={this._toggleFormDisplay}>Start a new repair</a>&nbsp; <span className="glyphicon glyphicon-menu-down" aria-hidden="true" style={menuDownStyle}></span><span className="glyphicon glyphicon-menu-up" aria-hidden="true" style={menuUpStyle}></span></div>
+    const formHeader = <div className="panel-title" ><a href="#repair-form" data-toggle="collapse" onClick={this._toggleFormDisplay}>Start a new repair&nbsp; <span className="glyphicon glyphicon-menu-down" aria-hidden="true" style={menuDownStyle}></span><span className="glyphicon glyphicon-menu-up" aria-hidden="true" style={menuUpStyle}></span></a></div>
 
 
 

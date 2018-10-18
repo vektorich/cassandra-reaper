@@ -1,13 +1,28 @@
+//
+//  Copyright 2015-2016 Stefan Podkowinski
+//  Copyright 2016-2018 The Last Pickle Ltd
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 import Rx from "rxjs";
 import $ from "jquery";
-
+import { getUrlPrefix } from "jsx/mixin";
 
 // interval to use for polling entity lists
 const POLLING_INTERVAL = 2000;
 
 // use reaper server url for ajax calls if running on dev server (will be run in iframe)
-const isDev = window != window.top;
-const URL_PREFIX = isDev ? 'http://127.0.0.1:8080' : '';
+const URL_PREFIX = getUrlPrefix(window.top.location.pathname);
 
 export const statusObservableTimer = Rx.Observable.timer(0, POLLING_INTERVAL).map(t => {
   console.debug("Pinging reaper server..");
@@ -16,6 +31,34 @@ export const statusObservableTimer = Rx.Observable.timer(0, POLLING_INTERVAL).ma
   }).promise());
 });
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Login
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+export const loginSubject = new Rx.Subject();
+
+export const loginResult = loginSubject.map(login => {
+  console.info("Logging in with username: " + login.username);
+  return Rx.Observable.fromPromise($.ajax({
+    url: `${URL_PREFIX}/login`,
+    method: 'POST',
+    data: { username: login.username, password: login.password}
+  }).promise());
+}).share();
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Logout
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+export const logoutSubject = new Rx.Subject();
+
+export const logoutResult = logoutSubject.map(logout => {
+  console.info("Logging out");
+  return Rx.Observable.fromPromise($.ajax({
+    url: `${URL_PREFIX}/logout`,
+    method: 'POST'
+  }).promise());
+}).share();
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // cluster
@@ -112,6 +155,7 @@ export const schedules = Rx.Observable.merge(
 export const addRepairSubject = new Rx.Subject();
 export const deleteRepairSubject = new Rx.Subject();
 export const updateRepairStatusSubject = new Rx.Subject();
+export const updateRepairIntensitySubject = new Rx.Subject();
 
 
 export const addRepairResult = addRepairSubject.map(repair => {
@@ -132,9 +176,17 @@ export const deleteRepairResult = deleteRepairSubject.map(repair => {
 }).share();
 
 export const updateRepairStatusResult = updateRepairStatusSubject.map(repair => {
-  console.info(`Updating repair run ${repair.id} status with state ${repair.state} `);
+  console.info(`Updating repair run ${repair.id} status with state ${repair.state}`);
   return Rx.Observable.fromPromise($.ajax({
-    url: `${URL_PREFIX}/repair_run/${encodeURIComponent(repair.id)}?state=${encodeURIComponent(repair.state)}`,
+    url: `${URL_PREFIX}/repair_run/${encodeURIComponent(repair.id)}/state/${encodeURIComponent(repair.state)}`,
+    method: 'PUT'
+  }).promise());
+}).share();
+
+export const updateRepairIntensityResult = updateRepairIntensitySubject.map(repair => {
+  console.info(`Updating repair run ${repair.id} status with intensity ${repair.intensity}`);
+  return Rx.Observable.fromPromise($.ajax({
+    url: `${URL_PREFIX}/repair_run/${encodeURIComponent(repair.id)}/intensity/${encodeURIComponent(repair.intensity)}`,
     method: 'PUT'
   }).promise());
 }).share();
@@ -144,7 +196,8 @@ export const repairs = Rx.Observable.merge(
     Rx.Observable.timer(0, POLLING_INTERVAL).map(t => Rx.Observable.just({})),
     addRepairResult,
     deleteRepairResult,
-    updateRepairStatusResult
+    updateRepairStatusResult,
+    updateRepairIntensityResult
   ).map(s =>
     s.flatMap(t => Rx.Observable.fromPromise($.ajax({
         url: `${URL_PREFIX}/repair_run`

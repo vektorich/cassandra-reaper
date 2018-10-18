@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -19,6 +22,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import javax.annotation.Nullable;
 import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.NotNull;
@@ -29,11 +33,16 @@ import io.dropwizard.Configuration;
 import io.dropwizard.db.DataSourceFactory;
 import org.apache.cassandra.repair.RepairParallelism;
 import org.hibernate.validator.constraints.NotEmpty;
+import org.secnod.dropwizard.shiro.ShiroConfiguration;
 import systems.composable.dropwizard.cassandra.CassandraFactory;
 
 public final class ReaperApplicationConfiguration extends Configuration {
 
   private static final int DEFAULT_SEGMENT_COUNT_PER_NODE = 16;
+  private static final Integer DEFAULT_MAX_PENDING_COMPACTIONS = 20;
+
+  @JsonProperty
+  private Integer maxPendingCompactions;
 
   @Deprecated
   @JsonProperty
@@ -64,7 +73,7 @@ public final class ReaperApplicationConfiguration extends Configuration {
   private Boolean useAddressTranslator;
 
   @JsonProperty
-  private String addressTranslatorRemoveDomain;
+  private AddressTranslatorConfiguration addressTranslatorConfiguration;
 
   @JsonProperty
   @NotNull
@@ -81,6 +90,9 @@ public final class ReaperApplicationConfiguration extends Configuration {
 
   @JsonProperty
   private Map<String, Integer> jmxPorts;
+
+  @JsonProperty
+  private Map<String, JmxCredentials> jmxCredentials;
 
   @JsonProperty
   private JmxCredentials jmxAuth;
@@ -106,6 +118,20 @@ public final class ReaperApplicationConfiguration extends Configuration {
   @JsonProperty
   private DatacenterAvailability datacenterAvailability;
 
+  @JsonProperty private AccessControlConfiguration accessControl;
+
+  @JsonProperty
+  private Integer repairThreadCount;
+  /** If set to more than 0, defines how many days of run history should be kept. */
+  @Nullable
+  @JsonProperty
+  private Integer purgeRecordsAfterInDays;
+
+  /** If set to more than 0, defines how many runs to keep per repair unit. */
+  @Nullable
+  @JsonProperty
+  private Integer numberOfRunsToKeepPerUnit;
+
   private CassandraFactory cassandra = new CassandraFactory();
 
   @Deprecated
@@ -115,7 +141,7 @@ public final class ReaperApplicationConfiguration extends Configuration {
   private DataSourceFactory relationalDb = new DataSourceFactory();
 
   public int getSegmentCount() {
-    return segmentCount;
+    return segmentCount == null ? 0 : segmentCount;
   }
 
   public void setSegmentCount(int segmentCount) {
@@ -128,6 +154,14 @@ public final class ReaperApplicationConfiguration extends Configuration {
 
   public void setSegmentCountPerNode(int segmentCountPerNode) {
     this.segmentCountPerNode = segmentCountPerNode;
+  }
+
+  public int getMaxPendingCompactions() {
+    return maxPendingCompactions == null ? DEFAULT_MAX_PENDING_COMPACTIONS : maxPendingCompactions;
+  }
+
+  public void setMaxPendingCompactions(int maxPendingCompactions) {
+    this.maxPendingCompactions = maxPendingCompactions;
   }
 
   public RepairParallelism getRepairParallelism() {
@@ -239,6 +273,14 @@ public final class ReaperApplicationConfiguration extends Configuration {
     this.jmxAuth = jmxAuth;
   }
 
+  public Map<String, JmxCredentials> getJmxCredentials() {
+    return jmxCredentials;
+  }
+
+  public void setJmxCredentials(Map<String, JmxCredentials> jmxCredentials) {
+    this.jmxCredentials = jmxCredentials;
+  }
+
   public boolean hasAutoSchedulingEnabled() {
     return autoScheduling != null && autoScheduling.isEnabled();
   }
@@ -269,6 +311,14 @@ public final class ReaperApplicationConfiguration extends Configuration {
 
   public void setUseAddressTranslator(boolean useAddressTranslator) {
     this.useAddressTranslator = useAddressTranslator;
+  }
+
+  public AddressTranslatorConfiguration getAddressTranslatorConfiguration() {
+    return addressTranslatorConfiguration;
+  }
+
+  public void setAddressTranslatorConfiguration(AddressTranslatorConfiguration addressTranslatorConfiguration) {
+    this.addressTranslatorConfiguration = addressTranslatorConfiguration;
   }
 
   public boolean useAddressTranslator() {
@@ -318,6 +368,40 @@ public final class ReaperApplicationConfiguration extends Configuration {
   @JsonProperty("datacenterAvailability")
   public void setDatacenterAvailability(DatacenterAvailability datacenterAvailability) {
     this.datacenterAvailability = datacenterAvailability;
+  }
+
+  public AccessControlConfiguration getAccessControl() {
+    return accessControl;
+  }
+
+  public void setAccessControl(AccessControlConfiguration accessControl) {
+    this.accessControl = accessControl;
+  }
+
+  public boolean isAccessControlEnabled() {
+    return getAccessControl() != null;
+  }
+
+  public int getRepairThreadCount() {
+    return repairThreadCount != null ? repairThreadCount : 1;
+  }
+
+  public Integer getPurgeRecordsAfterInDays() {
+    return purgeRecordsAfterInDays == null ? 0 : purgeRecordsAfterInDays;
+  }
+
+  @JsonProperty("purgeRecordsAfterInDays")
+  public void setPurgeRecordsAfterInDays(Integer purgeRecordsAfterInDays) {
+    this.purgeRecordsAfterInDays = purgeRecordsAfterInDays;
+  }
+
+  public Integer getNumberOfRunsToKeepPerUnit() {
+    return numberOfRunsToKeepPerUnit == null ? 50 : numberOfRunsToKeepPerUnit;
+  }
+
+  @JsonProperty("numberOfRunsToKeepPerUnit")
+  public void setNumberOfRunsToKeepPerUnit(Integer numberOfRunsToKeepPerUnit) {
+    this.numberOfRunsToKeepPerUnit = numberOfRunsToKeepPerUnit;
   }
 
   public static final class JmxCredentials {
@@ -434,5 +518,56 @@ public final class ReaperApplicationConfiguration extends Configuration {
     LOCAL,
     /* Each datacenter requires at minimum one reaper instance that has jmx access to all nodes in that datacenter */
     EACH
+  }
+
+  public static final class AccessControlConfiguration {
+
+    @JsonProperty private ShiroConfiguration shiro;
+    @JsonProperty private Duration sessionTimeout;
+
+    public ShiroConfiguration getShiroConfiguration() {
+      return shiro;
+    }
+
+    public Duration getSessionTimeout() {
+      return sessionTimeout;
+    }
+  }
+
+  public static final class AddressTranslatorConfiguration {
+
+    @JsonProperty
+    private String appendDomain;
+
+    @JsonProperty
+    private String appendInsteadOfReverse;
+
+    @JsonProperty
+    private String removeDomain;
+
+    public void setappendDomain(String appendDomain) {
+      this.appendDomain = appendDomain;
+    }
+
+    public String appendDomain() {
+      return this.appendDomain;
+    }
+
+
+    public void setAppendInsteadOfReverse(String appendInsteadOfReverse) {
+      this.appendInsteadOfReverse = appendInsteadOfReverse;
+    }
+
+    public String appendInsteadOfReverse() {
+      return this.appendInsteadOfReverse;
+    }
+
+    public void setRemoveDomain(String removeDomain) {
+      this.removeDomain = removeDomain;
+    }
+
+    public String removeDomain() {
+      return this.removeDomain;
+    }
   }
 }

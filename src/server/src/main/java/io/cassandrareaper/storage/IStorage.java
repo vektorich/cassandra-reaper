@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,21 +17,23 @@
 
 package io.cassandrareaper.storage;
 
+import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSchedule;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairUnit;
+import io.cassandrareaper.core.Snapshot;
 import io.cassandrareaper.resources.view.RepairRunStatus;
 import io.cassandrareaper.resources.view.RepairScheduleStatus;
 import io.cassandrareaper.service.RepairParameters;
 import io.cassandrareaper.service.RingRange;
 
 import java.util.Collection;
-import java.util.Set;
+import java.util.Optional;
+import java.util.SortedSet;
 import java.util.UUID;
 
-import com.google.common.base.Optional;
 
 /**
  * API definition for cassandra-reaper.
@@ -54,13 +59,15 @@ public interface IStorage {
    */
   Optional<Cluster> deleteCluster(String clusterName);
 
-  RepairRun addRepairRun(RepairRun.Builder repairRun, Collection<RepairSegment.Builder> newSegments);
+  RepairRun addRepairRun(RepairRun.Builder repairRun, Collection<RepairSegment.Builder> newSegments)
+      throws ReaperException;
 
   boolean updateRepairRun(RepairRun repairRun);
 
   Optional<RepairRun> getRepairRun(UUID id);
 
-  Collection<RepairRun> getRepairRunsForCluster(String clusterName);
+  /** return all the repair runs in a cluster, in reverse chronological order, with default limit is 1000 */
+  Collection<RepairRun> getRepairRunsForCluster(String clusterName, Optional<Integer> limit);
 
   Collection<RepairRun> getRepairRunsForUnit(UUID repairUnitId);
 
@@ -76,23 +83,9 @@ public interface IStorage {
 
   RepairUnit addRepairUnit(RepairUnit.Builder newRepairUnit);
 
-  Optional<RepairUnit> getRepairUnit(UUID id);
+  RepairUnit getRepairUnit(UUID id);
 
-  /**
-   * Get a stored RepairUnit targeting the given tables in the given keyspace.
-   *
-   * @param cluster Cluster name for the RepairUnit.
-   * @param keyspace Keyspace name for the RepairUnit.
-   * @param columnFamilyNames Set of column families targeted by the RepairUnit.
-   * @return Instance of a RepairUnit matching the parameters, or null if not found.
-   */
-  Optional<RepairUnit> getRepairUnit(
-      String cluster,
-      String keyspace,
-      Set<String> columnFamilyNames,
-      Set<String> nodes,
-      Set<String> datacenters,
-      Set<String> blacklistedTables);
+  Optional<RepairUnit> getRepairUnit(RepairUnit.Builder repairUnit);
 
   boolean updateRepairSegment(RepairSegment newRepairSegment);
 
@@ -112,7 +105,7 @@ public interface IStorage {
 
   Collection<RepairParameters> getOngoingRepairsInCluster(String clusterName);
 
-  Collection<UUID> getRepairRunIdsForCluster(String clusterName);
+  SortedSet<UUID> getRepairRunIdsForCluster(String clusterName);
 
   int getSegmentAmountForRepairRun(UUID runId);
 
@@ -144,4 +137,11 @@ public interface IStorage {
   Collection<RepairRunStatus> getClusterRunStatuses(String clusterName, int limit);
 
   Collection<RepairScheduleStatus> getClusterScheduleStatuses(String clusterName);
+
+  boolean saveSnapshot(Snapshot snapshot);
+
+  boolean deleteSnapshot(Snapshot snapshot);
+
+  Snapshot getSnapshot(String clusterName, String snapshotName);
+
 }

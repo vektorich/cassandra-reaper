@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,16 +17,18 @@
 
 package io.cassandrareaper.core;
 
-import io.cassandrareaper.service.RingRange;
-
 import java.math.BigInteger;
 import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 import com.google.common.base.Preconditions;
 import org.joda.time.DateTime;
 
+@JsonDeserialize(builder = RepairSegment.Builder.class)
 public final class RepairSegment {
 
   private static final boolean STRICT = !Boolean.getBoolean("reaper.disableSegmentChecks");
@@ -31,7 +36,7 @@ public final class RepairSegment {
   private final UUID id;
   private final UUID runId;
   private final UUID repairUnitId;
-  private final RingRange tokenRange;
+  private final Segment tokenRange;
   private final int failCount;
   private final State state;
   private final String coordinatorHost;
@@ -50,7 +55,7 @@ public final class RepairSegment {
     this.endTime = builder.endTime;
   }
 
-  public static Builder builder(RingRange tokenRange, UUID repairUnitId) {
+  public static Builder builder(Segment tokenRange, UUID repairUnitId) {
     return new Builder(tokenRange, repairUnitId);
   }
 
@@ -66,16 +71,18 @@ public final class RepairSegment {
     return repairUnitId;
   }
 
-  public RingRange getTokenRange() {
+  public Segment getTokenRange() {
     return tokenRange;
   }
 
+  @JsonIgnore
   public BigInteger getStartToken() {
-    return tokenRange.getStart();
+    return tokenRange.getBaseRange().getStart();
   }
 
+  @JsonIgnore
   public BigInteger getEndToken() {
-    return tokenRange.getEnd();
+    return tokenRange.getBaseRange().getEnd();
   }
 
   public int getFailCount() {
@@ -128,10 +135,12 @@ public final class RepairSegment {
     DONE
   }
 
+  @JsonPOJOBuilder(buildMethodName = "build", withPrefix = "with")
   public static final class Builder {
 
-    public final RingRange tokenRange;
-    private final UUID repairUnitId;
+    private UUID repairUnitId;
+    private Segment tokenRange;
+    private UUID id;
     private UUID runId;
     private int failCount;
     private State state;
@@ -139,7 +148,9 @@ public final class RepairSegment {
     private DateTime startTime;
     private DateTime endTime;
 
-    private Builder(RingRange tokenRange, UUID repairUnitId) {
+    private Builder() {}
+
+    private Builder(Segment tokenRange, UUID repairUnitId) {
       Preconditions.checkNotNull(tokenRange);
       Preconditions.checkNotNull(repairUnitId);
       this.repairUnitId = repairUnitId;
@@ -150,6 +161,7 @@ public final class RepairSegment {
 
     private Builder(RepairSegment original) {
       runId = original.runId;
+      id = original.id;
       repairUnitId = original.repairUnitId;
       tokenRange = original.tokenRange;
       failCount = original.failCount;
@@ -165,23 +177,34 @@ public final class RepairSegment {
       return this;
     }
 
-    public Builder failCount(int failCount) {
+    public Builder withRepairUnitId(UUID repairUnitId) {
+      Preconditions.checkNotNull(repairUnitId);
+      this.repairUnitId = repairUnitId;
+      return this;
+    }
+
+    public Builder withTokenRange(Segment tokenRange) {
+      this.tokenRange = tokenRange;
+      return this;
+    }
+
+    public Builder withFailCount(int failCount) {
       this.failCount = failCount;
       return this;
     }
 
-    public Builder state(State state) {
+    public Builder withState(State state) {
       Preconditions.checkNotNull(state);
       this.state = state;
       return this;
     }
 
-    public Builder coordinatorHost(@Nullable String coordinatorHost) {
+    public Builder withCoordinatorHost(@Nullable String coordinatorHost) {
       this.coordinatorHost = coordinatorHost;
       return this;
     }
 
-    public Builder startTime(DateTime startTime) {
+    public Builder withStartTime(DateTime startTime) {
       Preconditions.checkState(
           null != startTime || null == endTime,
           "unsetting startTime only permitted if endTime unset");
@@ -190,13 +213,17 @@ public final class RepairSegment {
       return this;
     }
 
-    public Builder endTime(DateTime endTime) {
-      Preconditions.checkNotNull(endTime);
+    public Builder withEndTime(DateTime endTime) {
       this.endTime = endTime;
       return this;
     }
 
-    public RepairSegment build(@Nullable UUID segmentId) {
+    public Builder withId(@Nullable UUID segmentId) {
+      this.id = segmentId;
+      return this;
+    }
+
+    public RepairSegment build() {
       // a null segmentId is a special case where the storage uses a sequence for it
       Preconditions.checkNotNull(runId);
       if (STRICT) {
@@ -215,7 +242,7 @@ public final class RepairSegment {
         }
       }
 
-      return new RepairSegment(this, segmentId);
+      return new RepairSegment(this, this.id);
     }
   }
 }

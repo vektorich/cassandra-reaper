@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -28,6 +31,7 @@ public final class TestContext {
   public static String TEST_USER = "test_user";
   public static String SEED_HOST;
   public static String TEST_CLUSTER;
+  public static UUID FINISHED_SEGMENT;
 
   /* Used for targeting an object accessed in last test step. */
   public static UUID LAST_MODIFIED_ID;

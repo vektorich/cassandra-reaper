@@ -1,9 +1,45 @@
+//
+//  Copyright 2015-2016 Stefan Podkowinski
+//  Copyright 2016-2018 The Last Pickle Ltd
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 import React from "react";
 import moment from "moment";
-import {RowDeleteMixin, StatusUpdateMixin, DeleteStatusMessageMixin, CFsListRender} from "jsx/mixin";
+import {RowDeleteMixin, StatusUpdateMixin, DeleteStatusMessageMixin, CFsListRender, toast, getUrlPrefix} from "jsx/mixin";
+var NotificationSystem = require('react-notification-system');
 
 const TableRow = React.createClass({
   mixins: [RowDeleteMixin, StatusUpdateMixin],
+  propTypes: {
+    notificationSystem: React.PropTypes.object.isRequired
+  },
+
+  _runNow: function() {
+    toast(this.props.notificationSystem, "Starting repair run for schedule " + this.props.row.id , "warning", this.props.row.id);
+    $.ajax({
+      url: getUrlPrefix(window.top.location.pathname) + '/repair_schedule/start/' + encodeURIComponent(this.props.row.id),
+      method: 'POST',
+      component: this,
+      dataType: 'text',
+      success: function(data) {
+        toast(this.component.props.notificationSystem, "Repair run for schedule " + this.component.props.row.id + " will start shortly.", "success", this.component.props.row.id);
+      },
+      error: function(data) {
+        toast(this.component.props.notificationSystem, "Failed starting repair run for schedule : " + data.responseText , "error", this.component.props.row.id);
+      }
+    });
+  },
 
   render: function() {
 
@@ -24,6 +60,7 @@ const TableRow = React.createClass({
         <td>
           {this.statusUpdateButton()}
           {this.deleteButton()}
+          <button type="button" className="btn btn-xs btn-info" onClick={this._runNow}>Run now</button>
         </td>
     </tr>
     );
@@ -86,7 +123,11 @@ const TableRowDetails = React.createClass({
                     <td>{this.props.row.intensity}</td>
                 </tr>
                 <tr>
-                    <td>Repair parallism</td>
+                    <td>Repair threads</td>
+                    <td>{this.props.row.repair_thread_count}</td>
+                </tr>
+                <tr>
+                    <td>Repair parallelism</td>
                     <td>{this.props.row.repair_parallelism}</td>
                 </tr>
                 <tr>
@@ -109,6 +150,7 @@ const TableRowDetails = React.createClass({
 
 const scheduleList = React.createClass({
   mixins: [DeleteStatusMessageMixin],
+  _notificationSystem: null,
 
   propTypes: {
     schedules: React.PropTypes.object.isRequired,
@@ -137,6 +179,10 @@ const scheduleList = React.createClass({
     );
   },
 
+  componentDidMount: function() {
+    this._notificationSystem = this.refs.notificationSystem;
+  },
+
   componentWillUnmount: function() {
     this._schedulesSubscription.dispose();
     this._clustersSubscription.dispose();
@@ -159,13 +205,21 @@ const scheduleList = React.createClass({
 
   render: function() {
 
-    const clusterItems = this.state.clusterNames.map(name =>
+    function compareNextActivationTime(a,b) {
+      if (a.next_activation < b.next_activation)
+        return -1;
+      if (a.next_activation > b.next_activation)
+        return 1;
+      return 0;
+    }
+
+    const clusterItems = this.state.clusterNames.sort().map(name =>
       <option key={name} value={name}>{name}</option>
     );
 
     const clusterFilter = <form className="form-horizontal form-condensed">
             <div className="form-group">
-              <label htmlFor="in_clusterName" className="col-sm-3 control-label">Filter cluster :</label>
+              <label htmlFor="in_clusterName" className="col-sm-3 control-label">Filter cluster:</label>
               <div className="col-sm-9 col-md-7 col-lg-5">
                 <select className="form-control" id="in_currentCluster"
                   onChange={this._handleChange} value={this.state.currentCluster}>
@@ -176,11 +230,12 @@ const scheduleList = React.createClass({
             </div>
     </form>
 
-    const rows = this.state.schedules.filter(schedule => this.state.currentCluster == "all" || this.state.currentCluster == schedule.cluster_name).map(schedule =>
+    const rows = this.state.schedules.sort(compareNextActivationTime).filter(schedule => this.state.currentCluster == "all" || this.state.currentCluster == schedule.cluster_name).map(schedule =>
       <tbody key={schedule.id+'-rows'}>
         <TableRow row={schedule} key={schedule.id+'-head'}
           deleteSubject={this.props.deleteSubject}
-          updateStatusSubject={this.props.updateStatusSubject}/>
+          updateStatusSubject={this.props.updateStatusSubject}
+          notificationSystem={this._notificationSystem} />
         <TableRowDetails row={schedule} key={schedule.id+'-details'}/>
       </tbody>
     );
@@ -216,6 +271,7 @@ const scheduleList = React.createClass({
 
     return (<div className="panel panel-default">
               <div className="panel-body">
+                <NotificationSystem ref="notificationSystem" />
                 {this.deleteMessage()}
                 {clusterFilter}
                 {table}

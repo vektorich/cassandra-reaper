@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,6 +19,7 @@ package io.cassandrareaper.jmx;
 
 import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
+import io.cassandrareaper.core.Segment;
 import io.cassandrareaper.service.RingRange;
 
 import java.io.IOException;
@@ -23,7 +27,6 @@ import java.lang.reflect.UndeclaredThrowableException;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
-import java.net.UnknownHostException;
 import java.rmi.server.RMIClientSocketFactory;
 import java.rmi.server.RMISocketFactory;
 import java.util.Collection;
@@ -33,7 +36,9 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -42,27 +47,30 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
-import javax.management.AttributeNotFoundException;
 import javax.management.InstanceNotFoundException;
+import javax.management.JMException;
 import javax.management.JMX;
 import javax.management.ListenerNotFoundException;
-import javax.management.MBeanException;
 import javax.management.MBeanServerConnection;
 import javax.management.MalformedObjectNameException;
 import javax.management.Notification;
 import javax.management.ObjectName;
-import javax.management.ReflectionException;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
 import javax.rmi.ssl.SslRMIClientSocketFactory;
 import javax.validation.constraints.NotNull;
 
-import com.google.common.base.Optional;
+
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.MetricRegistry;
+import com.datastax.driver.core.VersionNumber;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.net.HostAndPort;
 import org.apache.cassandra.db.ColumnFamilyStoreMBean;
 import org.apache.cassandra.db.compaction.CompactionManager;
 import org.apache.cassandra.db.compaction.CompactionManagerMBean;
@@ -73,95 +81,92 @@ import org.apache.cassandra.repair.RepairParallelism;
 import org.apache.cassandra.repair.messages.RepairOption;
 import org.apache.cassandra.service.ActiveRepairService;
 import org.apache.cassandra.service.StorageServiceMBean;
+import org.apache.cassandra.streaming.StreamManagerMBean;
 import org.apache.cassandra.utils.progress.ProgressEventType;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.google.common.base.Preconditions.checkNotNull;
 
 final class JmxProxyImpl implements JmxProxy {
 
   private static final Logger LOG = LoggerFactory.getLogger(JmxProxy.class);
 
   private static final int JMX_PORT = 7199;
-  private static final String JMX_URL = "service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi";
-  private static final String SS_OBJECT_NAME = "org.apache.cassandra.db:type=StorageService";
-  private static final String AES_OBJECT_NAME = "org.apache.cassandra.internal:type=AntiEntropySessions";
-  private static final String VALIDATION_ACTIVE_OBJECT_NAME
-      = "org.apache.cassandra.metrics:type=ThreadPools,path=internal,scope=ValidationExecutor,name=ActiveTasks";
-  private static final String VALIDATION_PENDING_OBJECT_NAME
-      = "org.apache.cassandra.metrics:type=ThreadPools,path=internal,scope=ValidationExecutor,name=PendingTasks";
-  private static final String COMP_OBJECT_NAME = "org.apache.cassandra.metrics:type=Compaction,name=PendingTasks";
+
   private static final String VALUE_ATTRIBUTE = "Value";
   private static final String FAILED_TO_CONNECT_TO_USING_JMX = "Failed to connect to {} using JMX";
   private static final String ERROR_GETTING_ATTR_JMX = "Error getting attribute from JMX";
 
+
   private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
 
   private final JMXConnector jmxConnector;
-  private final ObjectName ssMbeanName;
   private final MBeanServerConnection mbeanServer;
   private final CompactionManagerMBean cmProxy;
   private final EndpointSnitchInfoMBean endpointSnitchMbean;
-  private final Object ssProxy;
-  private final Object fdProxy;
-  private final Optional<RepairStatusHandler> repairStatusHandler;
+  private final StorageServiceMBean ssProxy;
+  private final FailureDetectorMBean fdProxy;
   private final String host;
   private final String hostBeforeTranslation;
-  private final JMXServiceURL jmxUrl;
   private final String clusterName;
+  private final ConcurrentMap<Integer, ExecutorService> repairStatusExecutors = Maps.newConcurrentMap();
+  private final ConcurrentMap<Integer, RepairStatusHandler> repairStatusHandlers = Maps.newConcurrentMap();
+  private final MetricRegistry metricRegistry;
+  private final StreamManagerMBean smProxy;
 
   private JmxProxyImpl(
-      Optional<RepairStatusHandler> handler,
       String host,
       String hostBeforeTranslation,
-      JMXServiceURL jmxUrl,
       JMXConnector jmxConnector,
-      Object ssProxy,
-      ObjectName ssMbeanName,
+      StorageServiceMBean ssProxy,
       MBeanServerConnection mbeanServer,
       CompactionManagerMBean cmProxy,
       EndpointSnitchInfoMBean endpointSnitchMbean,
-      FailureDetectorMBean fdProxy) {
+      FailureDetectorMBean fdProxy,
+      MetricRegistry metricRegistry,
+      StreamManagerMBean smProxy) {
 
     this.host = host;
     this.hostBeforeTranslation = hostBeforeTranslation;
-    this.jmxUrl = jmxUrl;
     this.jmxConnector = jmxConnector;
-    this.ssMbeanName = ssMbeanName;
     this.mbeanServer = mbeanServer;
     this.ssProxy = ssProxy;
-    this.repairStatusHandler = handler;
     this.cmProxy = cmProxy;
     this.endpointSnitchMbean = endpointSnitchMbean;
-    this.clusterName = Cluster.toSymbolicName(((StorageServiceMBean) ssProxy).getClusterName());
+    this.clusterName = Cluster.toSymbolicName(ssProxy.getClusterName());
     this.fdProxy = fdProxy;
+    this.metricRegistry = metricRegistry;
+    this.smProxy = smProxy;
+    registerConnectionsGauge();
   }
 
   /**
    * @see JmxProxy#connect(Optional, String, int, String, String, CustomEC2MultiRegionAddressTranslator)
    */
   static JmxProxy connect(
-      Optional<RepairStatusHandler> handler,
       String host,
       String username,
       String password,
       final CustomEC2MultiRegionAddressTranslator addressTranslator,
-      int connectionTimeout)
+      int connectionTimeout,
+      MetricRegistry metricRegistry)
       throws ReaperException, InterruptedException {
 
     if (host == null) {
       throw new ReaperException("Null host given to JmxProxy.connect()");
     }
 
-    String[] parts = host.split(":");
-    if (parts.length == 2) {
-      return connect(
-          handler, parts[0], Integer.valueOf(parts[1]), username, password, addressTranslator, connectionTimeout);
-    } else {
-      return connect(handler, host, JMX_PORT, username, password, addressTranslator, connectionTimeout);
-    }
+    final HostAndPort hostAndPort = HostAndPort.fromString(host);
+
+    return connect(
+          hostAndPort.getHostText(),
+          hostAndPort.getPortOrDefault(JMX_PORT),
+          username,
+          password,
+          addressTranslator,
+          connectionTimeout,
+          metricRegistry);
   }
 
   /**
@@ -177,19 +182,14 @@ final class JmxProxyImpl implements JmxProxy {
    *     translate addresses
    */
   private static JmxProxy connect(
-      Optional<RepairStatusHandler> handler,
       String originalHost,
       int port,
       String username,
       String password,
       final CustomEC2MultiRegionAddressTranslator addressTranslator,
-      int connectionTimeout)
-      throws ReaperException, InterruptedException {
+      int connectionTimeout,
+      MetricRegistry metricRegistry) throws ReaperException, InterruptedException {
 
-    ObjectName ssMbeanName;
-    ObjectName cmMbeanName;
-    ObjectName fdMbeanName;
-    ObjectName endpointSnitchMbeanName;
     JMXServiceURL jmxUrl;
     String host = originalHost;
 
@@ -200,12 +200,8 @@ final class JmxProxyImpl implements JmxProxy {
 
     try {
       LOG.debug("Connecting to {}...", host);
-      jmxUrl = new JMXServiceURL(String.format(JMX_URL, host, port));
-      ssMbeanName = new ObjectName(SS_OBJECT_NAME);
-      cmMbeanName = new ObjectName(CompactionManager.MBEAN_OBJECT_NAME);
-      fdMbeanName = new ObjectName(FailureDetector.MBEAN_NAME);
-      endpointSnitchMbeanName = new ObjectName("org.apache.cassandra.db:type=EndpointSnitchInfo");
-    } catch (MalformedURLException | MalformedObjectNameException e) {
+      jmxUrl = JmxAddresses.getJmxServiceUrl(host, port);
+    } catch (MalformedURLException e) {
       LOG.error(String.format("Failed to prepare the JMX connection to %s:%s", host, port));
       throw new ReaperException("Failure during preparations for JMX connection", e);
     }
@@ -218,34 +214,31 @@ final class JmxProxyImpl implements JmxProxy {
       env.put("com.sun.jndi.rmi.factory.socket", getRmiClientSocketFactory());
       JMXConnector jmxConn = connectWithTimeout(jmxUrl, connectionTimeout, TimeUnit.SECONDS, env);
       MBeanServerConnection mbeanServerConn = jmxConn.getMBeanServerConnection();
-      Object ssProxy = JMX.newMBeanProxy(mbeanServerConn, ssMbeanName, StorageServiceMBean.class);
-      String cassandraVersion = ((StorageServiceMBean) ssProxy).getReleaseVersion();
+
+      StorageServiceMBean ssProxy
+          = JMX.newMBeanProxy(mbeanServerConn, ObjectNames.STORAGE_SERVICE, StorageServiceMBean.class);
+
+      String cassandraVersion = ssProxy.getReleaseVersion();
       if (cassandraVersion.startsWith("2.0") || cassandraVersion.startsWith("1.")) {
-        ssProxy = JMX.newMBeanProxy(mbeanServerConn, ssMbeanName, StorageServiceMBean20.class);
+        ssProxy = JMX.newMBeanProxy(mbeanServerConn, ObjectNames.STORAGE_SERVICE, StorageServiceMBean20.class);
       }
 
-      CompactionManagerMBean cmProxy = JMX.newMBeanProxy(mbeanServerConn, cmMbeanName, CompactionManagerMBean.class);
-      FailureDetectorMBean fdProxy = JMX.newMBeanProxy(mbeanServerConn, fdMbeanName, FailureDetectorMBean.class);
+      JmxProxy proxy
+          = new JmxProxyImpl(
+              host,
+              originalHost,
+              jmxConn,
+              ssProxy,
+              mbeanServerConn,
+              JMX.newMBeanProxy(mbeanServerConn, ObjectNames.COMPACTION_MANAGER, CompactionManagerMBean.class),
+              JMX.newMBeanProxy(mbeanServerConn, ObjectNames.ENDPOINT_SNITCH_INFO, EndpointSnitchInfoMBean.class),
+              JMX.newMBeanProxy(mbeanServerConn, ObjectNames.FAILURE_DETECTOR, FailureDetectorMBean.class),
+              metricRegistry,
+              JMX.newMBeanProxy(mbeanServerConn, ObjectNames.STREAM_MANAGER, StreamManagerMBean.class));
 
-      EndpointSnitchInfoMBean endpointSnitchProxy
-          = JMX.newMBeanProxy(mbeanServerConn, endpointSnitchMbeanName, EndpointSnitchInfoMBean.class);
-
-      JmxProxy proxy = new JmxProxyImpl(
-          handler,
-          host,
-          originalHost,
-          jmxUrl,
-          jmxConn,
-          ssProxy,
-          ssMbeanName,
-          mbeanServerConn,
-          cmProxy,
-          endpointSnitchProxy,
-          fdProxy);
-
-      // registering a listener throws bunch of exceptions, so we do it here rather than in the
-      // constructor
-      mbeanServerConn.addNotificationListener(ssMbeanName, proxy, null, null);
+      // registering listeners throws bunch of exceptions, so do it here rather than in the constructor
+      mbeanServerConn.addNotificationListener(ObjectNames.STORAGE_SERVICE, proxy, null, null);
+      mbeanServerConn.addNotificationListener(ObjectNames.STREAM_MANAGER, proxy, null, null);
       LOG.debug("JMX connection to {} properly connected: {}", host, jmxUrl.toString());
 
       return proxy;
@@ -277,32 +270,17 @@ final class JmxProxyImpl implements JmxProxy {
   }
 
   @Override
-  public String getDataCenter() {
-    return getDataCenter(hostBeforeTranslation);
-  }
-
-  @Override
-  public String getDataCenter(String host) {
-    try {
-      return endpointSnitchMbean.getDatacenter(host);
-    } catch (UnknownHostException ex) {
-      throw new IllegalArgumentException(ex);
-    }
-  }
-
-  @Override
   public List<BigInteger> getTokens() {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
 
-    return Lists.transform(
-        Lists.newArrayList(((StorageServiceMBean) ssProxy).getTokenToEndpointMap().keySet()), s -> new BigInteger(s));
+    return Lists.transform(Lists.newArrayList(ssProxy.getTokenToEndpointMap().keySet()), s -> new BigInteger(s));
   }
 
   @Override
   public Map<List<String>, List<String>> getRangeToEndpointMap(String keyspace) throws ReaperException {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
     try {
-      return ((StorageServiceMBean) ssProxy).getRangeToEndpointMap(keyspace);
+      return ssProxy.getRangeToEndpointMap(keyspace);
     } catch (RuntimeException e) {
       LOG.error(e.getMessage());
       throw new ReaperException(e.getMessage(), e);
@@ -311,10 +289,10 @@ final class JmxProxyImpl implements JmxProxy {
 
   @Override
   public List<RingRange> getRangesForLocalEndpoint(String keyspace) throws ReaperException {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
     List<RingRange> localRanges = Lists.newArrayList();
     try {
-      Map<List<String>, List<String>> ranges = ((StorageServiceMBean) ssProxy).getRangeToEndpointMap(keyspace);
+      Map<List<String>, List<String>> ranges = ssProxy.getRangeToEndpointMap(keyspace);
       String localEndpoint = getLocalEndpoint();
       // Filtering ranges for which the local node is a replica
       // For local mode
@@ -339,35 +317,34 @@ final class JmxProxyImpl implements JmxProxy {
   public String getLocalEndpoint() throws ReaperException {
     String cassandraVersion = getCassandraVersion();
     if (versionCompare(cassandraVersion, "2.1.10") >= 0) {
-      return ((StorageServiceMBean) ssProxy)
-          .getHostIdToEndpoint()
-          .get(((StorageServiceMBean) ssProxy).getLocalHostId());
+      return ssProxy.getHostIdToEndpoint().get(ssProxy.getLocalHostId());
     } else {
       // pre-2.1.10 compatibility
-      BiMap<String, String> hostIdBiMap =
-          ImmutableBiMap.copyOf(((StorageServiceMBean) ssProxy).getHostIdMap());
-      String localHostId = ((StorageServiceMBean) ssProxy).getLocalHostId();
+      BiMap<String, String> hostIdBiMap = ImmutableBiMap.copyOf(ssProxy.getHostIdMap());
+      String localHostId = ssProxy.getLocalHostId();
       return hostIdBiMap.inverse().get(localHostId);
     }
   }
 
   @NotNull
   @Override
-  public List<String> tokenRangeToEndpoint(String keyspace, RingRange tokenRange) {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
+  public List<String> tokenRangeToEndpoint(String keyspace, Segment segment) {
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
 
-    Set<Map.Entry<List<String>, List<String>>> entries
-        = ((StorageServiceMBean) ssProxy).getRangeToEndpointMap(keyspace).entrySet();
+    Set<Map.Entry<List<String>, List<String>>> entries = ssProxy.getRangeToEndpointMap(keyspace).entrySet();
 
     for (Map.Entry<List<String>, List<String>> entry : entries) {
       BigInteger rangeStart = new BigInteger(entry.getKey().get(0));
       BigInteger rangeEnd = new BigInteger(entry.getKey().get(1));
-      if (new RingRange(rangeStart, rangeEnd).encloses(tokenRange)) {
-        LOG.debug("[tokenRangeToEndpoint] Found replicas for token range {} : {}", tokenRange, entry.getValue());
+      if (new RingRange(rangeStart, rangeEnd).encloses(segment.getTokenRanges().get(0))) {
+        LOG.debug(
+            "[tokenRangeToEndpoint] Found replicas for token range {} : {}",
+            segment.getTokenRanges().get(0),
+            entry.getValue());
         return entry.getValue();
       }
     }
-    LOG.error("[tokenRangeToEndpoint] no replicas found for token range {}", tokenRange);
+    LOG.error("[tokenRangeToEndpoint] no replicas found for token range {}", segment);
     LOG.debug("[tokenRangeToEndpoint] checked token ranges were {}", entries);
     return Lists.newArrayList();
   }
@@ -375,32 +352,30 @@ final class JmxProxyImpl implements JmxProxy {
   @NotNull
   @Override
   public Map<String, String> getEndpointToHostId() {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
-    Map<String, String> hosts;
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
     try {
-      hosts = ((StorageServiceMBean) ssProxy).getEndpointToHostId();
+      return ssProxy.getEndpointToHostId();
     } catch (UndeclaredThrowableException e) {
-      hosts = ((StorageServiceMBean) ssProxy).getHostIdMap();
+      return ssProxy.getHostIdMap();
     }
-    return hosts;
   }
 
   @Override
   public String getPartitioner() {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
-    return ((StorageServiceMBean) ssProxy).getPartitionerName();
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    return ssProxy.getPartitionerName();
   }
 
   @Override
   public String getClusterName() {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
-    return ((StorageServiceMBean) ssProxy).getClusterName();
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    return ssProxy.getClusterName();
   }
 
   @Override
   public List<String> getKeyspaces() {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
-    return ((StorageServiceMBean) ssProxy).getKeyspaces();
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    return ssProxy.getKeyspaces();
   }
 
   @Override
@@ -424,16 +399,12 @@ final class JmxProxyImpl implements JmxProxy {
   }
 
   @Override
-  public int getPendingCompactions() throws MBeanException, AttributeNotFoundException, ReflectionException {
-    checkNotNull(cmProxy, "Looks like the proxy is not connected");
+  public int getPendingCompactions() throws JMException {
     try {
-      ObjectName name = new ObjectName(COMP_OBJECT_NAME);
-      int pendingCount = (int) mbeanServer.getAttribute(name, VALUE_ATTRIBUTE);
+      int pendingCount = (int) mbeanServer.getAttribute(ObjectNames.COMPACTIONS_PENDING, VALUE_ATTRIBUTE);
       return pendingCount;
     } catch (IOException ignored) {
       LOG.warn(FAILED_TO_CONNECT_TO_USING_JMX, host, ignored);
-    } catch (MalformedObjectNameException ignored) {
-      LOG.error("Internal error, malformed name", ignored);
     } catch (InstanceNotFoundException e) {
       // This happens if no repair has yet been run on the node
       // The AntiEntropySessions object is created on the first repair
@@ -447,24 +418,21 @@ final class JmxProxyImpl implements JmxProxy {
   }
 
   @Override
-  public boolean isRepairRunning() throws MBeanException, AttributeNotFoundException, ReflectionException {
+  public boolean isRepairRunning() throws JMException {
     return isRepairRunningPre22() || isRepairRunningPost22() || isValidationCompactionRunning();
   }
 
   /**
    * @return true if any repairs are running on the node.
    */
-  private boolean isRepairRunningPre22() throws MBeanException, AttributeNotFoundException, ReflectionException {
+  private boolean isRepairRunningPre22() throws JMException {
     // Check if AntiEntropySession is actually running on the node
     try {
-      ObjectName name = new ObjectName(AES_OBJECT_NAME);
-      int activeCount = (Integer) mbeanServer.getAttribute(name, "ActiveCount");
-      long pendingCount = (Long) mbeanServer.getAttribute(name, "PendingTasks");
+      int activeCount = (Integer) mbeanServer.getAttribute(ObjectNames.ANTI_ENTROPY_SESSIONS, "ActiveCount");
+      long pendingCount = (Long) mbeanServer.getAttribute(ObjectNames.ANTI_ENTROPY_SESSIONS, "PendingTasks");
       return activeCount + pendingCount != 0;
     } catch (IOException ignored) {
       LOG.warn(FAILED_TO_CONNECT_TO_USING_JMX, host, ignored);
-    } catch (MalformedObjectNameException ignored) {
-      LOG.error("Internal error, malformed name", ignored);
     } catch (InstanceNotFoundException e) {
       // This happens if no repair has yet been run on the node
       // The AntiEntropySessions object is created on the first repair
@@ -480,22 +448,19 @@ final class JmxProxyImpl implements JmxProxy {
   /**
    * @return true if any repairs are running on the node.
    */
-  private boolean isValidationCompactionRunning()
-      throws MBeanException, AttributeNotFoundException, ReflectionException {
+  private boolean isValidationCompactionRunning() throws JMException {
 
     // Check if AntiEntropySession is actually running on the node
     try {
       int activeCount
-          = (Integer) mbeanServer.getAttribute(new ObjectName(VALIDATION_ACTIVE_OBJECT_NAME), VALUE_ATTRIBUTE);
+          = ((Number) mbeanServer.getAttribute(ObjectNames.TP_VALIDATIONS_ACTIVE, VALUE_ATTRIBUTE)).intValue();
 
-      long pendingCount
-          = (Long) mbeanServer.getAttribute(new ObjectName(VALIDATION_PENDING_OBJECT_NAME), VALUE_ATTRIBUTE);
+      int pendingCount
+          = ((Number) mbeanServer.getAttribute(ObjectNames.TP_VALIDATIONS_PENDING, VALUE_ATTRIBUTE)).intValue();
 
       return activeCount + pendingCount != 0;
     } catch (IOException ignored) {
       LOG.warn(FAILED_TO_CONNECT_TO_USING_JMX, host, ignored);
-    } catch (MalformedObjectNameException ignored) {
-      LOG.error("Internal error, malformed name", ignored);
     } catch (InstanceNotFoundException e) {
       LOG.error("Error getting pending/active validation compaction attributes from JMX", e);
       return false;
@@ -515,7 +480,7 @@ final class JmxProxyImpl implements JmxProxy {
     try {
       // list all mbeans in search of one with the name Repair#??
       // This is the replacement for AntiEntropySessions since Cassandra 2.2
-      Set beanSet = mbeanServer.queryNames(new ObjectName("org.apache.cassandra.internal:*"), null);
+      Set beanSet = mbeanServer.queryNames(ObjectNames.INTERNALS, null);
       for (Object bean : beanSet) {
         ObjectName objName = (ObjectName) bean;
         if (objName.getCanonicalName().contains("Repair#")) {
@@ -525,8 +490,6 @@ final class JmxProxyImpl implements JmxProxy {
       return false;
     } catch (IOException ignored) {
       LOG.warn(FAILED_TO_CONNECT_TO_USING_JMX, host, ignored);
-    } catch (MalformedObjectNameException ignored) {
-      LOG.error("Internal error, malformed name", ignored);
     } catch (RuntimeException e) {
       LOG.error(ERROR_GETTING_ATTR_JMX, e);
     }
@@ -536,9 +499,9 @@ final class JmxProxyImpl implements JmxProxy {
 
   @Override
   public void cancelAllRepairs() {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
     try {
-      ((StorageServiceMBean) ssProxy).forceTerminateAllRepairSessions();
+      ssProxy.forceTerminateAllRepairSessions();
     } catch (RuntimeException e) {
       // This can happen if the node is down (UndeclaredThrowableException),
       // in which case repairs will be cancelled anyway...
@@ -550,25 +513,17 @@ final class JmxProxyImpl implements JmxProxy {
   public Map<String, List<String>> listTablesByKeyspace() {
     Map<String, List<String>> tablesByKeyspace = Maps.newHashMap();
     try {
-      Set<ObjectName> beanSet =
-          mbeanServer.queryNames(
-              new ObjectName(
-                  "org.apache.cassandra.db:type=ColumnFamilies,keyspace=*,columnfamily=*"),
-              null);
+      Set<ObjectName> beanSet = mbeanServer.queryNames(ObjectNames.COLUMN_FAMILIES, null);
 
-      tablesByKeyspace =
-          beanSet
-              .stream()
-              .map(
-                  bean ->
-                      new JmxColumnFamily(
-                          bean.getKeyProperty("keyspace"), bean.getKeyProperty("columnfamily")))
+      tablesByKeyspace = beanSet.stream()
+              .map(bean ->
+                      new JmxColumnFamily(bean.getKeyProperty("keyspace"), bean.getKeyProperty("columnfamily")))
               .collect(
                   Collectors.groupingBy(
                       JmxColumnFamily::getKeyspace,
                       Collectors.mapping(JmxColumnFamily::getColumnFamily, Collectors.toList())));
 
-    } catch (MalformedObjectNameException | IOException e) {
+    } catch (IOException e) {
       LOG.warn("Couldn't get a list of tables through JMX", e);
     }
 
@@ -577,7 +532,7 @@ final class JmxProxyImpl implements JmxProxy {
 
   @Override
   public String getCassandraVersion() {
-    return ((StorageServiceMBean) ssProxy).getReleaseVersion();
+    return ssProxy.getReleaseVersion();
   }
 
 
@@ -589,17 +544,17 @@ final class JmxProxyImpl implements JmxProxy {
       RepairParallelism repairParallelism,
       Collection<String> columnFamilies,
       boolean fullRepair,
-      Collection<String> datacenters)
+      Collection<String> datacenters,
+      RepairStatusHandler repairStatusHandler,
+      List<RingRange> associatedTokens,
+      int repairThreadCount)
       throws ReaperException {
 
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
     String cassandraVersion = getCassandraVersion();
     boolean canUseDatacenterAware = false;
-    try {
-      canUseDatacenterAware = versionCompare(cassandraVersion, "2.0.12") >= 0;
-    } catch (ReaperException e) {
-      LOG.warn("failed on version comparison, not using dc aware repairs by default", e);
-    }
+    canUseDatacenterAware = versionCompare(cassandraVersion, "2.0.12") >= 0;
+
     String msg = String.format(
         "Triggering repair of range (%s,%s] for keyspace \"%s\" on "
         + "host %s, with repair parallelism %s, in cluster with Cassandra "
@@ -622,8 +577,9 @@ final class JmxProxyImpl implements JmxProxy {
       repairParallelism = RepairParallelism.SEQUENTIAL;
     }
     try {
+      int repairNo;
       if (cassandraVersion.startsWith("2.0") || cassandraVersion.startsWith("1.")) {
-        return triggerRepairPre2dot1(
+        repairNo = triggerRepairPre2dot1(
             repairParallelism,
             keyspace,
             columnFamilies,
@@ -631,7 +587,7 @@ final class JmxProxyImpl implements JmxProxy {
             endToken,
             datacenters.size() > 0 ? datacenters : null);
       } else if (cassandraVersion.startsWith("2.1")) {
-        return triggerRepair2dot1(
+        repairNo = triggerRepair2dot1(
             fullRepair,
             repairParallelism,
             keyspace,
@@ -641,16 +597,18 @@ final class JmxProxyImpl implements JmxProxy {
             cassandraVersion,
             datacenters.size() > 0 ? datacenters : null);
       } else {
-        return triggerRepairPost2dot2(
+        repairNo = triggerRepairPost2dot2(
             fullRepair,
             repairParallelism,
             keyspace,
             columnFamilies,
-            beginToken,
-            endToken,
-            cassandraVersion,
-            datacenters);
+            datacenters,
+            associatedTokens,
+            repairThreadCount);
       }
+      repairStatusExecutors.putIfAbsent(repairNo, Executors.newSingleThreadExecutor());
+      repairStatusHandlers.putIfAbsent(repairNo, repairStatusHandler);
+      return repairNo;
     } catch (RuntimeException e) {
       LOG.error("Segment repair failed", e);
       throw new ReaperException(e);
@@ -662,28 +620,36 @@ final class JmxProxyImpl implements JmxProxy {
       RepairParallelism repairParallelism,
       String keyspace,
       Collection<String> columnFamilies,
-      BigInteger beginToken,
-      BigInteger endToken,
-      String cassandraVersion,
-      Collection<String> datacenters) {
+      Collection<String> datacenters,
+      List<RingRange> associatedTokens,
+      int repairThreadCount) {
 
     Map<String, String> options = new HashMap<>();
 
     options.put(RepairOption.PARALLELISM_KEY, repairParallelism.getName());
-    // options.put(RepairOption.PRIMARY_RANGE_KEY, Boolean.toString(primaryRange));
     options.put(RepairOption.INCREMENTAL_KEY, Boolean.toString(!fullRepair));
-    options.put(RepairOption.JOB_THREADS_KEY, Integer.toString(1));
+    options.put(
+        RepairOption.JOB_THREADS_KEY,
+        Integer.toString(repairThreadCount == 0 ? 1 : repairThreadCount));
     options.put(RepairOption.TRACE_KEY, Boolean.toString(Boolean.FALSE));
     options.put(RepairOption.COLUMNFAMILIES_KEY, StringUtils.join(columnFamilies, ","));
     // options.put(RepairOption.PULL_REPAIR_KEY, Boolean.FALSE);
     if (fullRepair) {
-      options.put(RepairOption.RANGES_KEY, beginToken.toString() + ":" + endToken.toString());
+      options.put(
+          RepairOption.RANGES_KEY,
+          StringUtils.join(
+              associatedTokens
+                  .stream()
+                  .map(token -> token.getStart() + ":" + token.getEnd())
+                  .collect(Collectors.toList()),
+              ","));
     }
+
+    LOG.info("Triggering repair for ranges {}", options.get(RepairOption.RANGES_KEY));
 
     options.put(RepairOption.DATACENTERS_KEY, StringUtils.join(datacenters, ","));
     // options.put(RepairOption.HOSTS_KEY, StringUtils.join(specificHosts, ","));
-
-    return ((StorageServiceMBean) ssProxy).repairAsync(keyspace, options);
+    return ssProxy.repairAsync(keyspace, options);
   }
 
   private int triggerRepair2dot1(
@@ -699,41 +665,42 @@ final class JmxProxyImpl implements JmxProxy {
     if (fullRepair) {
       // full repair
       if (repairParallelism.equals(RepairParallelism.DATACENTER_AWARE)) {
-        return ((StorageServiceMBean) ssProxy)
-            .forceRepairRangeAsync(
-                beginToken.toString(),
-                endToken.toString(),
-                keyspace,
-                repairParallelism.ordinal(),
-                datacenters,
-                cassandraVersion.startsWith("2.2") ? new HashSet<String>() : null,
-                fullRepair,
-                columnFamilies.toArray(new String[columnFamilies.size()]));
+        return ssProxy
+                .forceRepairRangeAsync(
+                    beginToken.toString(),
+                    endToken.toString(),
+                    keyspace,
+                    repairParallelism.ordinal(),
+                    datacenters,
+                    cassandraVersion.startsWith("2.2") ? new HashSet<>() : null,
+                    fullRepair,
+                    columnFamilies.toArray(new String[columnFamilies.size()]));
       }
-
       boolean snapshotRepair = repairParallelism.equals(RepairParallelism.SEQUENTIAL);
 
-      return ((StorageServiceMBean) ssProxy)
-          .forceRepairRangeAsync(
-              beginToken.toString(),
-              endToken.toString(),
-              keyspace,
-              snapshotRepair ? RepairParallelism.SEQUENTIAL.ordinal() : RepairParallelism.PARALLEL.ordinal(),
-              datacenters,
-              cassandraVersion.startsWith("2.2") ? new HashSet<String>() : null,
-              fullRepair,
-              columnFamilies.toArray(new String[columnFamilies.size()]));
+      return ssProxy
+              .forceRepairRangeAsync(
+                  beginToken.toString(),
+                  endToken.toString(),
+                  keyspace,
+                  snapshotRepair
+                      ? RepairParallelism.SEQUENTIAL.ordinal()
+                      : RepairParallelism.PARALLEL.ordinal(),
+                  datacenters,
+                  cassandraVersion.startsWith("2.2") ? new HashSet<>() : null,
+                  fullRepair,
+                  columnFamilies.toArray(new String[columnFamilies.size()]));
     }
 
     // incremental repair
-    return ((StorageServiceMBean) ssProxy)
-        .forceRepairAsync(
-            keyspace,
-            Boolean.FALSE,
-            Boolean.FALSE,
-            Boolean.FALSE,
-            fullRepair,
-            columnFamilies.toArray(new String[columnFamilies.size()]));
+    return ssProxy
+            .forceRepairAsync(
+                keyspace,
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+                fullRepair,
+                columnFamilies.toArray(new String[columnFamilies.size()]));
   }
 
   private int triggerRepairPre2dot1(
@@ -747,56 +714,61 @@ final class JmxProxyImpl implements JmxProxy {
     // Cassandra 1.2 and 2.0 compatibility
     if (repairParallelism.equals(RepairParallelism.DATACENTER_AWARE)) {
       return ((StorageServiceMBean20) ssProxy)
-          .forceRepairRangeAsync(
-              beginToken.toString(),
-              endToken.toString(),
-              keyspace,
-              repairParallelism.ordinal(),
-              datacenters,
-              null,
-              columnFamilies.toArray(new String[columnFamilies.size()]));
+              .forceRepairRangeAsync(
+                  beginToken.toString(),
+                  endToken.toString(),
+                  keyspace,
+                  repairParallelism.ordinal(),
+                  datacenters,
+                  null,
+                  columnFamilies.toArray(new String[columnFamilies.size()]));
     }
     boolean snapshotRepair = repairParallelism.equals(RepairParallelism.SEQUENTIAL);
+
     return ((StorageServiceMBean20) ssProxy)
-        .forceRepairRangeAsync(
-            beginToken.toString(),
-            endToken.toString(),
-            keyspace,
-            snapshotRepair,
-            false,
-            columnFamilies.toArray(new String[columnFamilies.size()]));
-  }
-
-  @Override
-  public String getAllEndpointsState() {
-    return ((FailureDetectorMBean) fdProxy).getAllEndpointStates();
-  }
-
-  @Override
-  public Map<String, String> getSimpleStates() {
-    return ((FailureDetectorMBean) fdProxy).getSimpleStates();
+            .forceRepairRangeAsync(
+                beginToken.toString(),
+                endToken.toString(),
+                keyspace,
+                snapshotRepair,
+                false,
+                columnFamilies.toArray(new String[columnFamilies.size()]));
   }
 
   /**
-   * Invoked when the MBean this class listens to publishes an event. We're only interested in repair-related events.
-   * Their format is explained at {@link org.apache.cassandra.service.StorageServiceMBean#forceRepairAsync} The forma
-   * is: notification type: "repair" notification userData: int array of length 2 where [0] = command number [1] =
-   * ordinal of AntiEntropyService.Status
+   * Invoked when the MBean this class listens to publishes an event.
+   *
+   * <p>We're interested in repair-related events. Their format is explained at
+   * {@link org.apache.cassandra.service.StorageServiceMBean#forceRepairAsync}. The format is:
+   *    notification type: "repair"
+   *    notification userData: int array of length 2 where
+   *      [0] = command number
+   *      [1] = ordinal of AntiEntropyService.Status
+   *
    */
   @Override
-  public void handleNotification(Notification notification, Object handback) {
-    Thread.currentThread().setName(clusterName);
-    // we're interested in "repair"
-    String type = notification.getType();
-    LOG.debug(
-        "Received notification: {} with type {} and repairStatusHandler {}", notification, type, repairStatusHandler);
-    if (repairStatusHandler.isPresent() && ("repair").equals(type)) {
-      processOldApiNotification(notification);
-    }
+  public void handleNotification(final Notification notification, Object handback) {
+    // pass off the work immediately to a separate thread
+    final int repairNo = "repair".equals(notification.getType())
+        ? ((int[]) notification.getUserData())[0]
+        : Integer.parseInt(((String) notification.getSource()).split(":")[1]);
 
-    if (repairStatusHandler.isPresent() && ("progress").equals(type)) {
-      processNewApiNotification(notification);
-    }
+    repairStatusExecutors.get(repairNo).submit(() -> {
+      String threadName = Thread.currentThread().getName();
+      try {
+        String type = notification.getType();
+        Thread.currentThread().setName(clusterName + "–" + type + "–" + repairNo);
+        LOG.debug("Received notification: {} with type {}", notification, type);
+
+        if (("repair").equals(type)) {
+          processOldApiNotification(notification);
+        } else if (("progress").equals(type)) {
+          processNewApiNotification(notification);
+        }
+      } finally {
+        Thread.currentThread().setName(threadName);
+      }
+    });
   }
 
   /**
@@ -812,7 +784,13 @@ final class JmxProxyImpl implements JmxProxy {
       // this is some text message like "Starting repair...", "Finished repair...", etc.
       String message = notification.getMessage();
       // let the handler process the even
-      repairStatusHandler.get().handle(repairNo, Optional.of(status), Optional.absent(), message);
+      if (repairStatusHandlers.containsKey(repairNo)) {
+        LOG.debug("Handling notification {} with repair handler {}", notification, repairStatusHandlers.get(repairNo));
+
+        repairStatusHandlers
+            .get(repairNo)
+            .handle(repairNo, Optional.of(status), Optional.empty(), message, this);
+      }
     } catch (RuntimeException e) {
       LOG.error("Error while processing JMX notification", e);
     }
@@ -831,7 +809,13 @@ final class JmxProxyImpl implements JmxProxy {
       // this is some text message like "Starting repair...", "Finished repair...", etc.
       String message = notification.getMessage();
       // let the handler process the even
-      repairStatusHandler.get().handle(repairNo, Optional.absent(), Optional.of(progress), message);
+      if (repairStatusHandlers.containsKey(repairNo)) {
+        LOG.debug("Handling notification {} with repair handler {}", notification, repairStatusHandlers.get(repairNo));
+
+        repairStatusHandlers
+            .get(repairNo)
+            .handle(repairNo, Optional.empty(), Optional.of(progress), message, this);
+      }
     } catch (RuntimeException e) {
       LOG.error("Error while processing JMX notification", e);
     }
@@ -847,24 +831,29 @@ final class JmxProxyImpl implements JmxProxy {
       String connectionId = getConnectionId();
       return null != connectionId && connectionId.length() > 0;
     } catch (IOException e) {
-      LOG.error("Couldn't get Connection Id", e);
+      LOG.debug("Couldn't get Connection Id", e);
+      return false;
     }
-    return false;
   }
 
-  /**
-   * Cleanly shut down by un-registering the listener and closing the JMX connection.
-   */
+  @Override
+  public void removeRepairStatusHandler(int repairNo) {
+    repairStatusHandlers.remove(repairNo);
+    ExecutorService repairStatusExecutor = repairStatusExecutors.remove(repairNo);
+    if (null != repairStatusExecutor) {
+      repairStatusExecutor.shutdown();
+    }
+  }
+
+  /** Cleanly shut down by un-registering the listener and closing the JMX connection. */
   @Override
   public void close() {
-    LOG.debug("close JMX connection to '{}': {}", host, jmxUrl);
-    if (this.repairStatusHandler.isPresent()) {
-      try {
-        mbeanServer.removeNotificationListener(ssMbeanName, this);
-        LOG.debug("Successfully removed notification listener for '{}': {}", host, jmxUrl);
-      } catch (InstanceNotFoundException | ListenerNotFoundException | IOException e) {
-        LOG.debug("failed on removing notification listener", e);
-      }
+    try {
+      mbeanServer.removeNotificationListener(ObjectNames.STORAGE_SERVICE, this);
+      mbeanServer.removeNotificationListener(ObjectNames.STREAM_MANAGER, this);
+      LOG.debug("Successfully removed notification listeners for '{}'", host);
+    } catch (InstanceNotFoundException | ListenerNotFoundException | IOException e) {
+      LOG.debug("failed on removing notification listener", e);
     }
     try {
       jmxConnector.close();
@@ -874,81 +863,27 @@ final class JmxProxyImpl implements JmxProxy {
   }
 
   /**
-   * NOTICE: This code is loosely based on StackOverflow answer:
-   * http://stackoverflow.com/questions/6701948/efficient-way-to-compare-version-strings-in-java
-   *
-   * <p>
-   * Compares two version strings.
-   *
-   * <p>
-   * Use this instead of String.compareTo() for a non-lexicographical comparison that works for version strings. e.g.
-   * "1.10".compareTo("1.6").
+   * Compares two Cassandra versions using classes provided by the Datastax Java Driver.
    *
    * @param str1 a string of ordinal numbers separated by decimal points.
    * @param str2 a string of ordinal numbers separated by decimal points.
-   * @return The result is a negative integer if str1 is _numerically_ less than str2. The result is a positive integer
-   *      if str1 is _numerically_ greater than str2. The result is zero if the strings are _numerically_ equal. It does
-   *      not work if "1.10" is supposed to be equal to "1.10.0".
+   * @return The result is a negative integer if str1 is _numerically_ less than str2. The result is
+   *     a positive integer if str1 is _numerically_ greater than str2. The result is zero if the
+   *     strings are _numerically_ equal. It does not work if "1.10" is supposed to be equal to
+   *     "1.10.0".
    */
-  static Integer versionCompare(String str1, String str2) throws ReaperException {
-    try {
-      String cleanedUpStr1 = str1.split(" ")[0].replaceAll("[-_~]", ".");
-      String cleanedUpStr2 = str2.split(" ")[0].replaceAll("[-_~]", ".");
-      String[] parts1 = cleanedUpStr1.split("\\.");
-      String[] parts2 = cleanedUpStr2.split("\\.");
-      int idx = 0;
-      // set index to first non-equal ordinal or length of shortest version string
-      while (idx < parts1.length && idx < parts2.length) {
-        try {
-          Integer.parseInt(parts1[idx]);
-          Integer.parseInt(parts2[idx]);
-        } catch (NumberFormatException ex) {
-          if (idx == 0) {
-            throw ex; // just comparing two non-version strings should fail
-          }
-          // first non integer part, so let's just stop comparison here and ignore the res
-          idx--;
-          break;
-        }
-        if (parts1[idx].equals(parts2[idx])) {
-          idx++;
-          continue;
-        }
-        break;
-      }
-      // compare first non-equal ordinal number
-      if (idx < parts1.length && idx < parts2.length) {
-        int diff = Integer.valueOf(parts1[idx]).compareTo(Integer.valueOf(parts2[idx]));
-        return Integer.signum(diff);
-      } else {
-        // the strings are equal or one string is a substring of the other
-        // e.g. "1.2.3" = "1.2.3" or "1.2.3" < "1.2.3.4"
-        return Integer.signum(parts1.length - parts2.length);
-      }
-    } catch (RuntimeException ex) {
-      LOG.error("failed comparing strings for versions: '{}' '{}'", str1, str2);
-      throw new ReaperException(ex);
-    }
-  }
+  static Integer versionCompare(String str1, String str2) {
+    VersionNumber version1 = VersionNumber.parse(str1);
+    VersionNumber version2 = VersionNumber.parse(str2);
 
-  @Override
-  public void clearSnapshot(String repairId, String keyspaceName) throws ReaperException {
-    if (repairId == null || ("").equals(repairId)) {
-      // Passing in null or empty string will clear all snapshots on the hos
-      throw new IllegalArgumentException("repairId cannot be null or empty string");
-    }
-    try {
-      ((StorageServiceMBean) ssProxy).clearSnapshot(repairId, keyspaceName);
-    } catch (IOException e) {
-      throw new ReaperException(e);
-    }
+    return version1.compareTo(version2);
   }
 
   @Override
   public List<String> getLiveNodes() throws ReaperException {
-    checkNotNull(ssProxy, "Looks like the proxy is not connected");
+    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
     try {
-      return ((StorageServiceMBean) ssProxy).getLiveNodes();
+      return ssProxy.getLiveNodes();
     } catch (RuntimeException e) {
       LOG.error(e.getMessage());
       throw new ReaperException(e.getMessage(), e);
@@ -977,6 +912,97 @@ final class JmxProxyImpl implements JmxProxy {
 
     public String getColumnFamily() {
       return columnFamily;
+    }
+  }
+
+  private void registerConnectionsGauge() {
+    try {
+      if (!metricRegistry
+          .getGauges()
+          .containsKey(
+              MetricRegistry.name(
+                  JmxProxyImpl.class,
+                  clusterName.replace('.', '-'),
+                  host.replace('.', '-'),
+                  "repairStatusHandlers"))) {
+
+        metricRegistry.register(
+            MetricRegistry.name(
+                JmxProxyImpl.class,
+                clusterName.replace('.', '-'),
+                host.replace('.', '-'),
+                "repairStatusHandlers"),
+            (Gauge<Integer>) () -> repairStatusHandlers.size());
+      }
+    } catch (IllegalArgumentException e) {
+      LOG.warn("Cannot create connection gauge for node {}", host, e);
+    }
+  }
+
+  StorageServiceMBean getStorageServiceMBean() {
+    return ssProxy;
+  }
+
+  MBeanServerConnection getMBeanServerConnection() {
+    return mbeanServer;
+  }
+
+  CompactionManagerMBean getCompactionManagerMBean() {
+    return cmProxy;
+  }
+
+  StreamManagerMBean getStreamManagerMBean() {
+    return smProxy;
+  }
+
+  FailureDetectorMBean getFailureDetectorMBean() {
+    return fdProxy;
+  }
+
+  EndpointSnitchInfoMBean getEndpointSnitchInfoMBean() {
+    return endpointSnitchMbean;
+  }
+
+  String getUntranslatedHost() {
+    return hostBeforeTranslation;
+  }
+
+  // Initialization-on-demand holder for jmx ObjectNames
+  private static final class ObjectNames {
+
+    static final ObjectName STORAGE_SERVICE;
+    static final ObjectName COMPACTION_MANAGER;
+    static final ObjectName FAILURE_DETECTOR;
+    static final ObjectName STREAM_MANAGER;
+    static final ObjectName ENDPOINT_SNITCH_INFO;
+    static final ObjectName ANTI_ENTROPY_SESSIONS;
+    static final ObjectName COMPACTIONS_PENDING;
+    static final ObjectName COLUMN_FAMILIES;
+    static final ObjectName TP_VALIDATIONS_ACTIVE;
+    static final ObjectName TP_VALIDATIONS_PENDING;
+    static final ObjectName INTERNALS;
+
+    static {
+      try {
+        STORAGE_SERVICE = new ObjectName("org.apache.cassandra.db:type=StorageService");
+        COMPACTION_MANAGER = new ObjectName(CompactionManager.MBEAN_OBJECT_NAME);
+        FAILURE_DETECTOR = new ObjectName(FailureDetector.MBEAN_NAME);
+        STREAM_MANAGER = new ObjectName(StreamManagerMBean.OBJECT_NAME);
+        ENDPOINT_SNITCH_INFO = new ObjectName("org.apache.cassandra.db:type=EndpointSnitchInfo");
+        ANTI_ENTROPY_SESSIONS = new ObjectName("org.apache.cassandra.internal:type=AntiEntropySessions");
+        COMPACTIONS_PENDING = new ObjectName("org.apache.cassandra.metrics:type=Compaction,name=PendingTasks");
+        COLUMN_FAMILIES = new ObjectName("org.apache.cassandra.db:type=ColumnFamilies,keyspace=*,columnfamily=*");
+        INTERNALS = new ObjectName("org.apache.cassandra.internal:*");
+
+        TP_VALIDATIONS_ACTIVE = new ObjectName(
+            "org.apache.cassandra.metrics:type=ThreadPools,path=internal,scope=ValidationExecutor,name=ActiveTasks");
+
+        TP_VALIDATIONS_PENDING = new ObjectName(
+            "org.apache.cassandra.metrics:type=ThreadPools,path=internal,scope=ValidationExecutor,name=PendingTasks");
+
+      } catch (MalformedObjectNameException e) {
+        throw new IllegalStateException("Failure during preparations for JMX connection", e);
+      }
     }
   }
 }

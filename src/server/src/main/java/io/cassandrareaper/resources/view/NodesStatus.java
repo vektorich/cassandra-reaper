@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -15,18 +18,19 @@
 package io.cassandrareaper.resources.view;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Optional;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import jersey.repackaged.com.google.common.collect.Lists;
-import jersey.repackaged.com.google.common.collect.Maps;
 
 public final class NodesStatus {
 
@@ -40,8 +44,10 @@ public final class NodesStatus {
   private static final List<Pattern> ENDPOINT_HOSTID_PATTERNS = Lists.newArrayList();
   private static final List<Pattern> ENDPOINT_TOKENS_PATTERNS = Lists.newArrayList();
 
-  private static final Pattern ENDPOINT_NAME_PATTERN
+  private static final Pattern ENDPOINT_NAME_PATTERN_IP4
       = Pattern.compile("^([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3})", Pattern.MULTILINE | Pattern.DOTALL);
+  private static final Pattern ENDPOINT_NAME_PATTERN_IP6
+          = Pattern.compile("^([0-9:a-fA-F\\]\\[]{3,41})", Pattern.MULTILINE | Pattern.DOTALL);
   private static final Pattern ENDPOINT_STATUS_22_PATTERN = Pattern.compile("(STATUS):([0-9]*):(\\w+)");
   private static final Pattern ENDPOINT_DC_22_PATTERN = Pattern.compile("(DC):([0-9]*):([0-9a-zA-Z-\\.]+)");
   private static final Pattern ENDPOINT_RACK_22_PATTERN = Pattern.compile("(RACK):([0-9]*):([0-9a-zA-Z-\\.]+)");
@@ -85,18 +91,44 @@ public final class NodesStatus {
     Set<String> endpoints = Sets.newHashSet();
     Matcher matcher;
 
-    String[] strEndpoints = allEndpointStates.split("(?<![0-9a-zA-Z ])/");
+    // Split into endpointState record strings
+    String[] endpointLines = allEndpointStates.split("\n");
+    List<String> strEndpoints = Lists.newArrayList();
+    StringBuilder recordBuilder = null;
+    for (String line: endpointLines) {
+      if (!line.startsWith("  ")) {
+        if (recordBuilder != null) {
+          strEndpoints.add(recordBuilder.toString());
+        }
+        recordBuilder = new StringBuilder(line.substring(line.indexOf('/') + 1));
+      } else if (recordBuilder != null) {
+        recordBuilder.append('\n');
+        recordBuilder.append(line);
+      }
+    }
+    if (recordBuilder != null) {
+      strEndpoints.add(recordBuilder.toString());
+    }
+
+    // Cleanup hostnames from simpleStates keys
+    Map<String, String> simpleStatesCopy = new HashMap<>();
+    for (Map.Entry<String, String> entry: simpleStates.entrySet()) {
+      String entryKey = entry.getKey().substring(entry.getKey().indexOf('/'));
+      simpleStatesCopy.put(entryKey, entry.getValue());
+    }
+    simpleStates = simpleStatesCopy;
+
     Double totalLoad = 0.0;
 
-    for (int i = 1; i < strEndpoints.length; i++) {
-      String endpointString = strEndpoints[i];
-      Optional<String> status = Optional.absent();
+    for (String endpointString: strEndpoints) {
+      Optional<String> status = Optional.empty();
       Optional<String> endpoint = parseEndpointState(ENDPOINT_NAME_PATTERNS, endpointString, 1, String.class);
 
       for (Pattern endpointStatusPattern : ENDPOINT_STATUS_PATTERNS) {
         matcher = endpointStatusPattern.matcher(endpointString);
         if (matcher.find() && matcher.groupCount() >= 3) {
-          status = Optional.of(matcher.group(3) + " - " + simpleStates.getOrDefault("/" + endpoint.or(""), "UNKNOWN"));
+          status = Optional
+              .of(matcher.group(3) + " - " + simpleStates.getOrDefault("/" + endpoint.orElse(""), "UNKNOWN"));
           break;
         }
       }
@@ -108,20 +140,20 @@ public final class NodesStatus {
       Optional<String> hostId = parseEndpointState(ENDPOINT_HOSTID_PATTERNS, endpointString, 3, String.class);
       Optional<String> tokens = parseEndpointState(ENDPOINT_TOKENS_PATTERNS, endpointString, 2, String.class);
       Optional<Double> load = parseEndpointState(ENDPOINT_LOAD_PATTERNS, endpointString, 3, Double.class);
-      totalLoad += load.or(0.0);
+      totalLoad += load.orElse(0.0);
 
       EndpointState endpointState = new EndpointState(
-          endpoint.or(NOT_AVAILABLE),
-          hostId.or(NOT_AVAILABLE),
-          dc.or(NOT_AVAILABLE),
-          rack.or(NOT_AVAILABLE),
-          status.or(NOT_AVAILABLE),
-          severity.or(0.0),
-          releaseVersion.or(NOT_AVAILABLE),
-          tokens.or(NOT_AVAILABLE),
-          load.or(0.0));
+          endpoint.orElse(NOT_AVAILABLE),
+          hostId.orElse(NOT_AVAILABLE),
+          dc.orElse(NOT_AVAILABLE),
+          rack.orElse(NOT_AVAILABLE),
+          status.orElse(NOT_AVAILABLE),
+          severity.orElse(0.0),
+          releaseVersion.orElse(NOT_AVAILABLE),
+          tokens.orElse(NOT_AVAILABLE),
+          load.orElse(0.0));
 
-      endpoints.add(endpoint.or(NOT_AVAILABLE));
+      endpoints.add(endpoint.orElse(NOT_AVAILABLE));
       endpointStates.add(endpointState);
     }
 
@@ -139,7 +171,7 @@ public final class NodesStatus {
   }
 
   private <T> Optional<T> parseEndpointState(List<Pattern> patterns, String endpointString, int group, Class<T> type) {
-    Optional<T> result = Optional.absent();
+    Optional<T> result = Optional.empty();
     for (Pattern pattern : patterns) {
       Matcher matcher = pattern.matcher(endpointString);
       if (matcher.find() && matcher.groupCount() >= group) {
@@ -155,7 +187,7 @@ public final class NodesStatus {
   }
 
   private static void initPatterns() {
-    ENDPOINT_NAME_PATTERNS.add(ENDPOINT_NAME_PATTERN);
+    ENDPOINT_NAME_PATTERNS.addAll(Arrays.asList(ENDPOINT_NAME_PATTERN_IP4, ENDPOINT_NAME_PATTERN_IP6));
     ENDPOINT_STATUS_PATTERNS.addAll(Arrays.asList(ENDPOINT_STATUS_22_PATTERN, ENDPOINT_STATUS_21_PATTERN));
     ENDPOINT_DC_PATTERNS.addAll(Arrays.asList(ENDPOINT_DC_22_PATTERN, ENDPOINT_DC_21_PATTERN));
     ENDPOINT_RACK_PATTERNS.addAll(Arrays.asList(ENDPOINT_RACK_22_PATTERN, ENDPOINT_RACK_21_PATTERN));

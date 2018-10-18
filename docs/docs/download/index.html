@@ -13,13 +13,13 @@
 
   
 
-  <meta name="generator" content="Hugo 0.26" />
+  <meta name="generator" content="Hugo 0.40.3" />
 
   <link href='//fonts.googleapis.com/css?family=Roboto:400,100,100italic,300,300italic,500,700,800' rel='stylesheet' type='text/css'>
 
   
-  <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
-  <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
 
   
   <link href="http://cassandra-reaper.io/css/animate.css" rel="stylesheet">
@@ -150,7 +150,6 @@
     <div class="container">
         <div class="row">
             <div class="col-md-12">
-                <h1></h1>
             </div>
         </div>
     </div>
@@ -183,6 +182,15 @@
         
     </ul>
     
+    </li>
+    
+    
+    <li>
+        <a href="/docs/concepts/">
+            
+            <span>Core Concepts</span>
+        </a>
+        
     </li>
     
     
@@ -230,22 +238,40 @@
     
 
     <li class="sub-menu">
-    <a href="/docs/usage/" class="">
+    <a href="/docs/metrics/" class="">
         
-        <span>Usage</span>
+        <span>Metrics</span>
         <span class="menu-arrow arrow_carrot-right"></span>
     </a>
     <ul class="sub">
         
-        <li><a href="/docs/usage/add_cluster/"> Add a Cluster </a> </li>
+        <li><a href="/docs/metrics/graphite/"> Graphite Reporter </a> </li>
         
-        <li><a href="/docs/usage/health/"> Check Cluster Health </a> </li>
+    </ul>
+    
+    </li>
+    
+    
+
+    <li class="sub-menu">
+    <a href="/docs/usage/" class="">
         
-        <li><a href="/docs/usage/single/"> Running a Repair </a> </li>
+        <span>Using Reaper</span>
+        <span class="menu-arrow arrow_carrot-right"></span>
+    </a>
+    <ul class="sub">
         
-        <li><a href="/docs/usage/schedule/"> Scheduling Repairs </a> </li>
+        <li><a href="/docs/usage/add_cluster/"> Adding a Cluster </a> </li>
         
-        <li><a href="/docs/usage/multi_dc/"> Multi DC </a> </li>
+        <li><a href="/docs/usage/health/"> Checking a Cluster&#39;s Health </a> </li>
+        
+        <li><a href="/docs/usage/single/"> Running a Cluster Repair </a> </li>
+        
+        <li><a href="/docs/usage/schedule/"> Scheduling a Cluster Repair </a> </li>
+        
+        <li><a href="/docs/usage/multi_dc/"> Operating with a Multi DC Cluster </a> </li>
+        
+        <li><a href="/docs/usage/authentication/"> Activating Web UI Authentication </a> </li>
         
     </ul>
     
@@ -277,19 +303,91 @@
 
 <h1 id="downloads-and-installation">Downloads and Installation</h1>
 
-<p>The current stable version is <a href="https://github.com/thelastpickle/cassandra-reaper/releases/tag/1.0.1">1.0.1</a></p>
+<h2 id="packages">Packages</h2>
+
+<p>The current stable version can be downloaded in the following packaging formats :</p>
 
 <ul>
-<li><a href="https://github.com/thelastpickle/cassandra-reaper/releases/download/1.0.1/reaper_1.0.1_amd64.deb">Deb Package</a></li>
-<li><a href="https://github.com/thelastpickle/cassandra-reaper/releases/download/1.0.1/reaper-1.0.1-1.x86_64.rpm">RPM</a></li>
-<li><a href="https://github.com/thelastpickle/cassandra-reaper/releases/download/1.0.1/cassandra-reaper-1.0.1-release.tar.gz">Tarball</a></li>
+<li><a href="https://bintray.com/thelastpickle/reaper-deb/cassandra-reaper/_latestVersion"> <img src="https://api.bintray.com/packages/thelastpickle/reaper-deb/cassandra-reaper/images/download.svg" alt="Deb package" /> </a> Deb package</li>
+<li><a href="https://bintray.com/thelastpickle/reaper-rpm/cassandra-reaper/_latestVersion"> <img src="https://api.bintray.com/packages/thelastpickle/reaper-rpm/cassandra-reaper/images/download.svg" alt="RPM" /> </a> RPM</li>
+<li><a href="https://bintray.com/thelastpickle/reaper-tarball/cassandra-reaper/_latestVersion"> <img src="https://api.bintray.com/packages/thelastpickle/reaper-tarball/cassandra-reaper/images/download.svg" alt="Tarball" /> </a> Tarball</li>
 </ul>
+
+<p>The current development version can be downloaded in the following packaging formats :</p>
+
+<ul>
+<li><a href="https://bintray.com/thelastpickle/reaper-deb-beta/cassandra-reaper-beta/_latestVersion"> <img src="https://api.bintray.com/packages/thelastpickle/reaper-deb-beta/cassandra-reaper-beta/images/download.svg" alt="Deb package" /> </a> Deb package</li>
+<li><a href="https://bintray.com/thelastpickle/reaper-rpm-beta/cassandra-reaper-beta/_latestVersion"> <img src="https://api.bintray.com/packages/thelastpickle/reaper-rpm-beta/cassandra-reaper-beta/images/download.svg" alt="RPM" /> </a> RPM</li>
+<li><a href="https://bintray.com/thelastpickle/reaper-tarball-beta/cassandra-reaper-beta/_latestVersion"> <img src="https://api.bintray.com/packages/thelastpickle/reaper-tarball-beta/cassandra-reaper-beta/images/download.svg" alt="Tarball" /> </a> Tarball</li>
+</ul>
+
+<h2 id="quick-installation-guide">Quick Installation Guide</h2>
 
 <iframe width="560" height="315" src="https://www.youtube.com/embed/0dub29BgwPI" frameborder="0" gesture="media" allowfullscreen></iframe>
 
-<p>For a docker image, please see the Docker section.</p>
+<p>For a docker image, please see the <a href="docker">Docker</a> section.</p>
 
-<p>Once you&rsquo;ve downloaded the proper package for your OS, head over to the <a href="install">Install and Run</a> section.</p>
+<p>Once the appropriate package has been downloaded, head over to the <a href="install">Install and Run</a> section.</p>
+
+<h2 id="upgrading-from-1-2-0-1-2-1-to-1-2-2">Upgrading from 1.2.0/1.2.1 to 1.2.2</h2>
+
+<p>We unfortunately had to break schema migrations for upgrades to 1.2.2 from 1.2.0 and 1.2.1.
+Here is the upgrade procedure for each Reaper backend:</p>
+
+<h3 id="cassandra">Cassandra</h3>
+
+<ul>
+<li>Stop all Reaper instances</li>
+<li>Run the following DDL statement on the backend cluster :</li>
+</ul>
+
+<pre><code>ALTER TABLE reaper_db.repair_unit_v1 DROP repair_thread_count;
+</code></pre>
+
+<ul>
+<li>Upgrade Reaper to 1.2.2 and start it</li>
+</ul>
+
+<p><strong>Note:</strong> by doing so the number of threads for each existing schedule will revert back to 0, which will be translated to a single repair thread. If you previously had defined a specific number of threads you will need to recreate these schedules or update the <code>repair_unit_v1</code> table manually (this field is only useful with Cassandra 2.2, there is no benefit in Cassandra &lt;=2.1 or &gt;=3.0).</p>
+
+<h3 id="h2">H2</h3>
+
+<ul>
+<li>Stop Reaper</li>
+<li>Pointing to your current Reaper jar file (located in <code>/usr/share/cassandra-reaper</code> for packaged installs), run the following command :
+<code>
+java -cp /usr/share/cassandra-reaper/cassandra-reaper-1.2.*.jar org.h2.tools.Shell
+</code>
+When asked, provide the JDBC URL from your Cassandra Reaper yaml file (for example : <code>jdbc:h2:~/reaper-db/db;MODE=PostgreSQL</code>), use the default <code>Driver</code> and leave username/password empty.
+Then run the following statements:</li>
+</ul>
+
+<pre><code>ALTER TABLE REPAIR_UNIT DROP COLUMN repair_thread_count;
+ALTER TABLE REPAIR_SEGMENT DROP COLUMN TOKEN_RANGES;
+</code></pre>
+
+<ul>
+<li>Upgrade Reaper to 1.2.2 and start it</li>
+</ul>
+
+<p><strong>Note:</strong> by doing so the number of threads for each existing schedule will revert back to 0, which will be translated to a single repair thread. If you previously had defined a specific number of threads you will need to recreate these schedules or update the <code>repair_unit</code> table manually (this field is only useful with Cassandra 2.2, there is no benefit in Cassandra &lt;=2.1 or &gt;=3.0).</p>
+
+<h3 id="postgres">Postgres</h3>
+
+<ul>
+<li>Stop Reaper</li>
+<li>Connect to your Postgres database using the psql shell (or any other client) and run the following statements:</li>
+</ul>
+
+<pre><code>ALTER TABLE &quot;repair_unit&quot; DROP COLUMN &quot;repair_thread_count&quot;;
+ALTER TABLE &quot;repair_segment&quot; DROP COLUMN &quot;token_ranges&quot;;
+</code></pre>
+
+<ul>
+<li>Upgrade Reaper to 1.2.2 and start it</li>
+</ul>
+
+<p><strong>Note:</strong> by doing so the number of threads for each existing schedule will revert back to 0, which will be translated to a single repair thread. If you previously had defined a specific number of threads you will need to recreate these schedules or update the <code>repair_unit</code> table manually (this field is only useful with Cassandra 2.2, there is no benefit in Cassandra &lt;=2.1 or &gt;=3.0).</p>
 
 
                     </div>
@@ -366,7 +464,7 @@ ga('send', 'pageview');
 
 <script src="/js/jquery-3.2.1.min.js"></script>
 
-<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
 
 <script src="//cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
 <script src="//cdnjs.cloudflare.com/ajax/libs/waypoints/4.0.1/jquery.waypoints.min.js"></script>

@@ -1,4 +1,17 @@
 #!/bin/bash
+# Copyright 2017-2018 The Last Pickle Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 echo "Starting Script step..."
 
@@ -10,20 +23,30 @@ case "${TEST_TYPE}" in
         exit 1
         ;;
     "ccm")
-        ccm start -v
+        mvn --version -B
+        ccm start
         sleep 30
         ccm status
-        ccm node1 nodetool status
+        if [ "${TRAVIS_BRANCH}" = "master" ]
+            then
+                VERSION=$(printf 'VER\t${project.version}' | mvn help:evaluate | grep '^VER' | cut -f2)
+                DATE=$(date +"%Y%m%d")
+                # Bintray doesn't like snapshots, but accepts betas :)
+                BETA_VERSION=$(echo $VERSION | sed "s/SNAPSHOT/BETA/")
+                mvn -B versions:set "-DnewVersion=${BETA_VERSION}-${DATE}"
+        fi
 
-        MAVEN_OPTS="-Xmx1g" mvn clean install
+        MAVEN_OPTS="-Xmx1g" mvn -B clean install
+
         if [ "x${GRIM_MIN}" = "x" ]
         then
-            mvn surefire:test -Dtest=ReaperIT
-            mvn surefire:test -Dtest=ReaperH2IT
-            mvn surefire:test -Dtest=ReaperPostgresIT
-            mvn surefire:test -DsurefireArgLine="-Xmx1g" -Dtest=ReaperCassandraIT
+            mvn -B surefire:test -Dtest=ReaperIT
+            mvn -B surefire:test -Dtest=ReaperAuthIT
+            mvn -B surefire:test -Dtest=ReaperH2IT
+            mvn -B surefire:test -Dtest=ReaperPostgresIT
+            mvn -B surefire:test -DsurefireArgLine="-Xmx1g" -Dtest=ReaperCassandraIT
         else
-            mvn surefire:test -DsurefireArgLine="-Xmx1g" -Dtest=ReaperCassandraIT -Dgrim.reaper.min=${GRIM_MIN} -Dgrim.reaper.max=${GRIM_MAX}
+            mvn -B surefire:test -DsurefireArgLine="-Xmx1g" -Dtest=ReaperCassandraIT -Dgrim.reaper.min=${GRIM_MIN} -Dgrim.reaper.max=${GRIM_MAX}
         fi
         ;;
     "docker")
@@ -33,7 +56,7 @@ case "${TEST_TYPE}" in
         # Need to change the permissions after building the packages using the Docker image because they
         # are set to root and if left unchanged they will cause Maven to fail
         sudo chown -R travis:travis ./src/server/target/
-        mvn -f src/server/pom.xml docker:build -Ddocker.directory=src/server/src/main/docker -DskipTests
+        mvn -B -f src/server/pom.xml docker:build -Ddocker.directory=src/server/src/main/docker -DskipTests
         docker images
 
         # Generation of SSL stores - this can be done at any point in time prior to running setting up the SSL environment

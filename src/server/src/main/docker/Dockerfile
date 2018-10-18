@@ -1,6 +1,19 @@
-FROM openjdk:8-jre-alpine
+# Copyright 2017-2017 Spotify AB
+# Copyright 2017-2018 The Last Pickle Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-ARG SHADED_JAR
+FROM openjdk:8-jre-alpine
 
 ENV REAPER_SEGMENT_COUNT=200 \
     REAPER_REPAIR_PARALELLISM=DATACENTER_AWARE \
@@ -27,7 +40,8 @@ ENV REAPER_SEGMENT_COUNT=200 \
     REAPER_JMX_AUTH_PASSWORD="" \
     REAPER_LOGGING_ROOT_LEVEL=INFO \
     REAPER_LOGGING_LOGGERS="{}" \
-    REAPER_LOGGING_APPENDERS_LOG_FORMAT='"%-6level [%d] [%t] %logger{5} - %msg %n"' \
+    REAPER_LOGGING_APPENDERS_CONSOLE_LOG_FORMAT='"%-6level [%d] [%t] %logger{5} - %msg %n"' \
+    REAPER_LOGGING_APPENDERS_CONSOLE_THRESHOLD=INFO \
     REAPER_SERVER_APP_PORT=8080 \
     REAPER_SERVER_APP_BIND_HOST="0.0.0.0" \
     REAPER_SERVER_ADMIN_PORT=8081 \
@@ -35,6 +49,7 @@ ENV REAPER_SEGMENT_COUNT=200 \
     REAPER_CASS_ACTIVATE_QUERY_LOGGER=false \
     REAPER_CASS_CLUSTER_NAME="clustername" \
     REAPER_CASS_CONTACT_POINTS="[]" \
+    REAPER_CASS_PORT=9042 \
     REAPER_CASS_KEYSPACE="reaper_db" \
     REAPER_CASS_LOCAL_DC="" \
     REAPER_CASS_AUTH_ENABLED="false" \
@@ -47,31 +62,44 @@ ENV REAPER_SEGMENT_COUNT=200 \
     REAPER_METRICS_ENABLED=false \
     REAPER_METRICS_FREQUENCY="1 minute" \
     REAPER_METRICS_REPORTERS="[]" \
+    REAPER_ENABLE_WEBUI_AUTH=false \
+    REAPER_WEBUI_USER="reaper" \
+    REAPER_WEBUI_PASSWORD="CassandraReaper" \
+    REAPER_SHIRO_INI="/etc/shiro.ini" \
     JAVA_OPTS=""
 
 ADD cassandra-reaper.yml /etc/cassandra-reaper.yml
+ADD shiro.ini /etc/shiro.ini
 ADD entrypoint.sh /usr/local/bin/entrypoint.sh
 ADD configure-persistence.sh /usr/local/bin/configure-persistence.sh
 ADD configure-metrics.sh /usr/local/bin/configure-metrics.sh
+ADD configure-webui-authentication.sh /usr/local/bin/configure-webui-authentication.sh
 
 RUN addgroup -S reaper && \
     adduser -S reaper reaper && \
     apk add --no-cache 'su-exec>=0.2' && \
     mkdir -p /var/lib/cassandra-reaper && \
+    mkdir -p /etc/cassandra-reaper/shiro && \
+    mkdir -p /var/log/cassandra-reaper && \
     chown reaper:reaper \
         /etc/cassandra-reaper.yml \
+        /etc/shiro.ini \
         /var/lib/cassandra-reaper \
+        /var/log/cassandra-reaper \
         /usr/local/bin/entrypoint.sh \
         /usr/local/bin/configure-persistence.sh \
+        /usr/local/bin/configure-webui-authentication.sh \
         /usr/local/bin/configure-metrics.sh && \
     chmod u+x \
         /usr/local/bin/entrypoint.sh \
         /usr/local/bin/configure-persistence.sh \
+        /usr/local/bin/configure-webui-authentication.sh \
         /usr/local/bin/configure-metrics.sh
 
 VOLUME /var/lib/cassandra-reaper
+VOLUME /etc/cassandra-reaper/shiro
 
-ADD ${SHADED_JAR} /usr/local/lib/cassandra-reaper.jar
+ADD cassandra-reaper.jar /usr/local/lib/cassandra-reaper.jar
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["cassandra-reaper"]

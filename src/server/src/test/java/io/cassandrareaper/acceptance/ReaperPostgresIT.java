@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -27,15 +30,17 @@ import org.slf4j.LoggerFactory;
 
 @RunWith(Cucumber.class)
 @CucumberOptions(
-    features = "classpath:io.cassandrareaper.acceptance/integration_reaper_functionality.feature"
+    features = "classpath:io.cassandrareaper.acceptance/integration_reaper_functionality.feature",
+    plugin = {"pretty"}
     )
-public final class ReaperPostgresIT {
+public class ReaperPostgresIT {
 
   private static final Logger LOG = LoggerFactory.getLogger(ReaperPostgresIT.class);
   private static ReaperJettyTestSupport runnerInstance;
   private static final String POSTGRES_CONFIG_FILE = "cassandra-reaper-postgres-at.yaml";
 
-  private ReaperPostgresIT() {}
+
+  protected ReaperPostgresIT() {}
 
   @BeforeClass
   public static void setUp() throws Exception {

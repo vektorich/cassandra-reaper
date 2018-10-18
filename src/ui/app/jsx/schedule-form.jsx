@@ -1,7 +1,30 @@
+//
+//  Copyright 2015-2016 Stefan Podkowinski
+//  Copyright 2016-2018 The Last Pickle Ltd
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+
 import React from "react";
 import { WithContext as ReactTags } from 'react-tag-input';
 import $ from "jquery";
+import { DateTimePicker } from 'react-widgets';
+import { getUrlPrefix } from "jsx/mixin";
+import momentLocalizer from 'react-widgets-moment';
+import Moment from 'moment';
+import moment from "moment";
 
+Moment.locale(navigator.language);
+momentLocalizer();
 
 const scheduleForm = React.createClass({
 
@@ -13,16 +36,15 @@ const scheduleForm = React.createClass({
   },
 
   getInitialState: function() {
-    const isDev = window != window.top;
-    const URL_PREFIX = isDev ? 'http://127.0.0.1:8080' : '';
+    const URL_PREFIX = getUrlPrefix(window.top.location.pathname);
 
     return {
       addScheduleResultMsg: null, clusterNames: [], submitEnabled: false,
       clusterName: this.props.currentCluster!="all"?this.props.currentCluster:this.props.clusterNames[0], keyspace: "", tables: "", owner: null, segments: null,
-      parallism: null, intensity: null, startTime: null, intervalDays: null, incrementalRepair: null, formCollapsed: true, nodes: null, datacenters: null, 
+      parallelism: null, intensity: null, startTime: moment().toDate(), intervalDays: null, incrementalRepair: null, formCollapsed: true, nodes: null, datacenters: null,
       nodes: "", datacenters: "", blacklistedTables: "", nodeList: [], datacenterList: [], clusterStatus: {}, urlPrefix: URL_PREFIX, nodeSuggestions: [], datacenterSuggestions: [],
       clusterTables: {}, tableSuggestions: [], blacklistSuggestions: [], tableList: [], blacklistList: [], keyspaceList: [], keyspaceSuggestions: [], 
-      blacklistReadOnly: false, tablelistReadOnly: false, advancedFormCollapsed: true
+      blacklistReadOnly: false, tablelistReadOnly: false, advancedFormCollapsed: true, repairThreadCount: 1
     };
   },
 
@@ -37,10 +59,12 @@ const scheduleForm = React.createClass({
     this._clusterNamesSubscription = this.props.clusterNames.subscribeOnNext(obs =>
       obs.subscribeOnNext(names => {
         let previousNames = this.state.clusterNames;
-        this.setState({clusterNames: names});
-        if(names.length == 1) this.setState({clusterName: names[0]});
-        if(previousNames.length == 0) {
-          this._getClusterStatus();
+        if(previousNames.length != names.length) {
+          this.setState({clusterNames: names});
+          if(names.length == 1) this.setState({clusterName: names[0]});
+          if(previousNames.length == 0) {
+            this._getClusterStatus();
+          }
         }
       })
     );
@@ -94,12 +118,12 @@ const scheduleForm = React.createClass({
   _onAdd: function(e) {
     const schedule = {
       clusterName: this.state.clusterName, keyspace: this.state.keyspace,
-      owner: this.state.owner, scheduleTriggerTime: this.state.startTime,
+      owner: this.state.owner, scheduleTriggerTime: moment(this.state.startTime).utc().format("YYYY-MM-DDTHH:mm"),
       scheduleDaysBetween: this.state.intervalDays
     };
     if(this.state.tables) schedule.tables = this.state.tables;
     if(this.state.segments) schedule.segmentCountPerNode = this.state.segments;
-    if(this.state.parallism) schedule.repairParallelism = this.state.parallism;
+    if(this.state.parallelism) schedule.repairParallelism = this.state.parallelism;
     if(this.state.intensity) schedule.intensity = this.state.intensity;
     if(this.state.incrementalRepair){
       schedule.incrementalRepair = this.state.incrementalRepair;
@@ -110,6 +134,7 @@ const scheduleForm = React.createClass({
     if(this.state.nodes) schedule.nodes = this.state.nodes;
     if(this.state.datacenters) schedule.datacenters = this.state.datacenters;
     if(this.state.blacklistedTables) schedule.blacklistedTables = this.state.blacklistedTables;
+    if(this.state.repairThreadCount) schedule.repairThreadCount = this.state.repairThreadCount;
 
     this.props.addScheduleSubject.onNext(schedule);
   },
@@ -117,14 +142,15 @@ const scheduleForm = React.createClass({
   _handleChange: function(e) {
     var v = e.target.value;
     var n = e.target.id.substring(3); // strip in_ prefix
-    if (n == 'clusterName') {
-      this._getClusterStatus();
-    }
-
+    
     // update state
     const state = this.state;
     state[n] = v;
     this.replaceState(state);
+
+    if (n == 'clusterName') {
+      this._getClusterStatus();
+    }
 
     // validate
     this._checkValidity();
@@ -333,7 +359,7 @@ const scheduleForm = React.createClass({
       addMsg = <div className="alert alert-danger" role="alert">{this.state.addScheduleResultMsg}</div>
     }
 
-    const clusterItems = this.state.clusterNames.map(name =>
+    const clusterItems = this.state.clusterNames.sort().map(name =>
       <option key={name} value={name}>{name}</option>
     );
 
@@ -358,9 +384,9 @@ const scheduleForm = React.createClass({
     const keyspaceInputStyle = this.state.keyspaceList.length > 0 ? 'form-control-hidden':'form-control';
 
     const advancedSettingsHeader = <div className="panel-title" >
-    <a href="#advanced-form" data-toggle="collapse" onClick={this._toggleAdvancedSettingsDisplay}>Advanced settings</a>
+    <a href="#advanced-form" data-toggle="collapse" onClick={this._toggleAdvancedSettingsDisplay}>Advanced settings
     &nbsp; <span className="glyphicon glyphicon-menu-down" aria-hidden="true" style={advancedMenuDownStyle}></span>
-           <span className="glyphicon glyphicon-menu-up" aria-hidden="true" style={advancedMenuUpStyle}></span></div>
+           <span className="glyphicon glyphicon-menu-up" aria-hidden="true" style={advancedMenuUpStyle}></span></a></div>
 
     const form = <div className="row">
         <div className="col-lg-12">
@@ -402,8 +428,11 @@ const scheduleForm = React.createClass({
             <div className="form-group">
               <label htmlFor="in_startTime" className="col-sm-3 control-label">Start time*</label>
               <div className="col-sm-9 col-md-7 col-lg-5">
-                <input type="datetime-local" required className="form-control"
-                  onChange={this._handleChange} value={this.state.startTime} id="in_startTime"/>
+                  <DateTimePicker
+                    value={this.state.startTime}
+                    onChange={value => this.setState({ startTime: value })}
+                    step={15}
+                  />
               </div>
             </div>
             <div className="form-group">
@@ -486,10 +515,10 @@ const scheduleForm = React.createClass({
                       </div>
                     </div>
                     <div className="form-group">
-                      <label htmlFor="in_parallism" className="col-sm-3 control-label">Parallelism</label>
+                      <label htmlFor="in_parallelism" className="col-sm-3 control-label">Parallelism</label>
                       <div className="col-sm-14 col-md-12 col-lg-9">
-                        <select className="form-control" id="in_parallism"
-                          onChange={this._handleChange} value={this.state.parallism}>
+                        <select className="form-control" id="in_parallelism"
+                          onChange={this._handleChange} value={this.state.parallelism}>
                           <option value=""></option>
                           <option value="SEQUENTIAL">Sequential</option>
                           <option value="PARALLEL">Parallel</option>
@@ -512,6 +541,14 @@ const scheduleForm = React.createClass({
                           <option value="false">false</option>
                           <option value="true">true</option>                  
                         </select>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="in_repairThreadCount" className="col-sm-3 control-label">Repair threads</label>
+                      <div className="col-sm-14 col-md-12 col-lg-9">
+                        <input type="number" className="form-control" value={this.state.repairThreadCount}
+                          min="1" max="4"
+                          onChange={this._handleChange} id="in_repairThreadCount" placeholder="repair threads"/>
                       </div>
                     </div>
                   </div>
@@ -546,10 +583,10 @@ const scheduleForm = React.createClass({
       }
     }
 
-    const formHeader = <div className="panel-title" >
-                          <a href="#schedule-form" data-toggle="collapse" onClick={this._toggleFormDisplay}>Add schedule</a>
+    const formHeader = <div className="panel-title">
+                          <a href="#schedule-form" data-toggle="collapse" onClick={this._toggleFormDisplay}>Add schedule
                           &nbsp; <span className="glyphicon glyphicon-menu-down" aria-hidden="true" style={menuDownStyle}></span>
-                                 <span className="glyphicon glyphicon-menu-up" aria-hidden="true" style={menuUpStyle}></span></div>
+                                 <span className="glyphicon glyphicon-menu-up" aria-hidden="true" style={menuUpStyle}></span></a></div>
 
 
 

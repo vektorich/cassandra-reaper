@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -30,28 +33,28 @@ public final class RepairUnitMapper implements ResultSetMapper<RepairUnit> {
   public RepairUnit map(int index, ResultSet rs, StatementContext ctx) throws SQLException {
 
     String[] columnFamilies = parseStringArray(rs.getArray("column_families").getArray());
-    String[] nodes =
-        rs.getArray("nodes") == null
+
+    String[] nodes = rs.getArray("nodes") == null
             ? new String[] {}
             : parseStringArray(rs.getArray("nodes").getArray());
-    String[] datacenters =
-        rs.getArray("datacenters") == null
+
+    String[] datacenters = rs.getArray("datacenters") == null
             ? new String[] {}
             : parseStringArray(rs.getArray("datacenters").getArray());
-    String[] blacklistedTables =
-        rs.getArray("blacklisted_tables") == null
+
+    String[] blacklistedTables = rs.getArray("blacklisted_tables") == null
             ? new String[] {}
             : parseStringArray(rs.getArray("blacklisted_tables").getArray());
 
-    RepairUnit.Builder builder =
-        new RepairUnit.Builder(
-            rs.getString("cluster_name"),
-            rs.getString("keyspace_name"),
-            Sets.newHashSet(columnFamilies),
-            rs.getBoolean("incremental_repair"),
-            Sets.newHashSet(nodes),
-            Sets.newHashSet(datacenters),
-            Sets.newHashSet(blacklistedTables));
+    RepairUnit.Builder builder = RepairUnit.builder()
+            .clusterName(rs.getString("cluster_name"))
+            .keyspaceName(rs.getString("keyspace_name"))
+            .columnFamilies(Sets.newHashSet(columnFamilies))
+            .incrementalRepair(rs.getBoolean("incremental_repair"))
+            .nodes(Sets.newHashSet(nodes))
+            .datacenters(Sets.newHashSet(datacenters))
+            .blacklistedTables(Sets.newHashSet(blacklistedTables))
+            .repairThreadCount(rs.getInt("repair_thread_count"));
 
     return builder.build(UuidUtil.fromSequenceId(rs.getLong("id")));
   }

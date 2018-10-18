@@ -1,4 +1,7 @@
 /*
+ * Copyright 2014-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -20,6 +23,8 @@ import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairUnit;
+import io.cassandrareaper.core.Segment;
+import io.cassandrareaper.jmx.EndpointSnitchInfoProxy;
 import io.cassandrareaper.jmx.JmxProxy;
 
 import java.util.Arrays;
@@ -27,6 +32,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -34,7 +41,6 @@ import java.util.stream.Collectors;
 
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
-import com.google.common.base.Optional;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.FutureCallback;
@@ -56,8 +62,11 @@ final class RepairRunner implements Runnable {
   private JmxProxy jmxConnection;
   private final AtomicReferenceArray<UUID> currentlyRunningSegments;
   private final List<RingRange> parallelRanges;
+  private final String metricNameForMillisSinceLastRepairPerKeyspace;
   private final String metricNameForMillisSinceLastRepair;
   private float repairProgress;
+  private float segmentsDone;
+  private float segmentsTotal;
 
   RepairRunner(AppContext context, UUID repairRunId) throws ReaperException {
     LOG.debug("Creating RepairRunner for run with ID {}", repairRunId);
@@ -67,19 +76,17 @@ final class RepairRunner implements Runnable {
     assert repairRun.isPresent() : "No RepairRun with ID " + repairRunId + " found from storage";
     Optional<Cluster> cluster = context.storage.getCluster(repairRun.get().getClusterName());
     assert cluster.isPresent() : "No Cluster with name " + repairRun.get().getClusterName() + " found from storage";
-    Optional<RepairUnit> repairUnitOpt = context.storage.getRepairUnit(repairRun.get().getRepairUnitId());
-    assert repairUnitOpt.isPresent() : "No RepairUnit with id " + repairRun.get().getRepairUnitId()
-        + " found in storage";
+    RepairUnit repairUnitOpt = context.storage.getRepairUnit(repairRun.get().getRepairUnitId());
     this.clusterName = cluster.get().getName();
 
     JmxProxy jmx = this.context.jmxConnectionFactory
         .connectAny(cluster.get(), context.config.getJmxConnectionTimeoutInSeconds());
 
-    String keyspace = repairUnitOpt.get().getKeyspaceName();
+    String keyspace = repairUnitOpt.getKeyspaceName();
     int parallelRepairs
         = getPossibleParallelRepairsCount(jmx.getRangeToEndpointMap(keyspace), jmx.getEndpointToHostId());
 
-    if ((repairUnitOpt.isPresent() && repairUnitOpt.get().getIncrementalRepair())) {
+    if (repairUnitOpt.getIncrementalRepair()) {
       // with incremental repair, can't have more parallel repairs than nodes
       // Same goes for local mode
       parallelRepairs = 1;
@@ -92,13 +99,43 @@ final class RepairRunner implements Runnable {
     Collection<RepairSegment> repairSegments = context.storage.getRepairSegmentsForRun(repairRunId);
 
     parallelRanges = getParallelRanges(
-        parallelRepairs,
-        Lists.newArrayList(Collections2.transform(repairSegments, segment -> segment.getTokenRange())));
+            parallelRepairs,
+            Lists.newArrayList(
+                Collections2.transform(
+                    repairSegments, segment -> segment.getTokenRange().getBaseRange())));
 
-    String repairUnitClusterName = repairUnitOpt.get().getClusterName();
-    String metricNameForRepairProgress = metricName("repairProgress",  repairUnitClusterName, repairRunId);
+    String repairUnitClusterName = repairUnitOpt.getClusterName();
+    String repairUnitKeyspaceName = repairUnitOpt.getKeyspaceName();
+
+    // below four metric names are duplicated, so monitoring systems can follow per cluster or per cluster and keyspace
+    String metricNameForRepairProgressPerKeyspace
+        = metricName("repairProgress", repairUnitClusterName, repairUnitKeyspaceName, repairRunId);
+
+    String metricNameForRepairProgress = metricName("repairProgress", repairUnitClusterName, repairRunId);
+
+    context.metricRegistry.register(metricNameForRepairProgressPerKeyspace, (Gauge<Float>) ()  -> repairProgress);
     context.metricRegistry.register(metricNameForRepairProgress, (Gauge<Float>) ()  -> repairProgress);
+
+    metricNameForMillisSinceLastRepairPerKeyspace
+        = metricName("millisSinceLastRepair", repairUnitClusterName, repairUnitKeyspaceName, repairRunId);
+
     metricNameForMillisSinceLastRepair = metricName("millisSinceLastRepair", repairUnitClusterName, repairRunId);
+
+    String metricNameForDoneSegmentsPerKeyspace
+        = metricName("segmentsDone", repairUnitClusterName, repairUnitKeyspaceName, repairRunId);
+
+    String metricNameForDoneSegments = metricName("segmentsDone", repairUnitClusterName, repairRunId);
+
+    context.metricRegistry.register(metricNameForDoneSegmentsPerKeyspace, (Gauge<Float>) ()  -> segmentsDone);
+    context.metricRegistry.register(metricNameForDoneSegments, (Gauge<Integer>) ()  -> (int)segmentsDone);
+
+    String metricNameForTotalSegmentsPerKeyspace
+        = metricName("segmentsTotal", repairUnitClusterName, repairUnitKeyspaceName, repairRunId);
+
+    String metricNameForTotalSegments = metricName("segmentsTotal", repairUnitClusterName, repairRunId);
+
+    context.metricRegistry.register(metricNameForTotalSegmentsPerKeyspace, (Gauge<Integer>) ()  -> (int)segmentsTotal);
+    context.metricRegistry.register(metricNameForTotalSegments, (Gauge<Float>) ()  -> segmentsTotal);
   }
 
   UUID getRepairRunId() {
@@ -115,6 +152,11 @@ final class RepairRunner implements Runnable {
       throw new ReaperException(msg);
     }
 
+    LOG.debug(
+        "Possible parallel repairs : {}",
+        Math.min(
+            ranges.size() / ranges.values().iterator().next().size(),
+            Math.max(1, hostsInRing.keySet().size() / ranges.values().iterator().next().size())));
     return Math.min(
         ranges.size() / ranges.values().iterator().next().size(),
         Math.max(1, hostsInRing.keySet().size() / ranges.values().iterator().next().size()));
@@ -143,6 +185,8 @@ final class RepairRunner implements Runnable {
             segments.get((parallelRepairs - 1) * segments.size() / parallelRepairs).getStart(),
             segments.get(0).getStart()));
 
+    LOG.debug("Parallel ranges : {}", parallelRanges);
+
     return parallelRanges;
   }
 
@@ -161,6 +205,7 @@ final class RepairRunner implements Runnable {
         killAndCleanupRunner();
         return;
       }
+
       RepairRun.RunState state = repairRun.get().getRunState();
       LOG.debug("run() called for repair run #{} with run state {}", repairRunId, state);
       switch (state) {
@@ -169,6 +214,9 @@ final class RepairRunner implements Runnable {
           break;
         case RUNNING:
           startNextSegment();
+          // We're updating the node list of the cluster at the start of each new run.
+          // Helps keeping up with topology changes.
+          updateClusterNodeList();
           break;
         case PAUSED:
           context.repairManager.scheduleRetry(this);
@@ -194,7 +242,33 @@ final class RepairRunner implements Runnable {
       context.storage.updateRepairRun(
           repairRun.with().runState(RepairRun.RunState.RUNNING).startTime(DateTime.now()).build(repairRun.getId()));
     }
+
     startNextSegment();
+  }
+
+  /**
+   * Updates the list of nodes in storage for the cluster that's being repaired.
+   *
+   * @throws ReaperException Thrown in case the cluster cannot be found in storage
+   */
+  private void updateClusterNodeList() throws ReaperException {
+    Set<String> liveNodes = jmxConnection.getLiveNodes().stream().collect(Collectors.toSet());
+    Optional<Cluster> cluster = context.storage.getCluster(clusterName);
+    if (!cluster.isPresent()) {
+      throw new ReaperException(
+          "Cluster "
+              + clusterName
+              + " couldn't be found in storage. This shouldn't be happening (╯°□°)╯︵ ┻━┻");
+    }
+
+    if (!cluster.get().getSeedHosts().equals(liveNodes) && !liveNodes.isEmpty()) {
+      // Updating storage only if the seed lists has changed
+      LOG.info(
+          "Updating the seed list for cluster {} as topology changed since the last repair.",
+          clusterName);
+      Cluster newCluster = new Cluster(cluster.get().getName(), cluster.get().getPartitioner(), liveNodes);
+      context.storage.updateCluster(newCluster);
+    }
   }
 
   private void endRepairRun() {
@@ -211,7 +285,11 @@ final class RepairRunner implements Runnable {
               .build(repairRun.getId()));
       killAndCleanupRunner();
 
+      context.metricRegistry.remove(metricNameForMillisSinceLastRepairPerKeyspace);
       context.metricRegistry.remove(metricNameForMillisSinceLastRepair);
+      context.metricRegistry.register(
+          metricNameForMillisSinceLastRepairPerKeyspace,
+          (Gauge<Long>) () -> DateTime.now().getMillis() - repairRunCompleted.toInstant().getMillis());
       context.metricRegistry.register(
           metricNameForMillisSinceLastRepair,
           (Gauge<Long>) () -> DateTime.now().getMillis() - repairRunCompleted.toInstant().getMillis());
@@ -222,8 +300,8 @@ final class RepairRunner implements Runnable {
     if (jmxConnection == null || !jmxConnection.isConnectionAlive()) {
       LOG.debug("connecting JMX proxy for repair runner on run id: {}", repairRunId);
       Cluster cluster = context.storage.getCluster(this.clusterName).get();
-      jmxConnection
-          = context.jmxConnectionFactory.connectAny(cluster, context.config.getJmxConnectionTimeoutInSeconds());
+      jmxConnection = context.jmxConnectionFactory.connectAny(
+              cluster, context.config.getJmxConnectionTimeoutInSeconds());
       LOG.debug("successfully reestablished JMX proxy for repair runner");
     }
   }
@@ -272,8 +350,8 @@ final class RepairRunner implements Runnable {
 
       // We have an empty slot, so let's start new segment runner if possible.
       LOG.info("Running segment for range {}", parallelRanges.get(rangeIndex));
-      Optional<RepairSegment> nextRepairSegment
-          = context.storage.getNextFreeSegmentInRange(repairRunId, Optional.of(parallelRanges.get(rangeIndex)));
+      Optional<RepairSegment> nextRepairSegment = context.storage.getNextFreeSegmentInRange(
+              repairRunId, Optional.of(parallelRanges.get(rangeIndex)));
 
       if (!nextRepairSegment.isPresent()) {
         LOG.debug("No repair segment available for range {}", parallelRanges.get(rangeIndex));
@@ -286,27 +364,32 @@ final class RepairRunner implements Runnable {
           LOG.debug("Didn't set segment id `{}` to slot {} because it was busy", segmentId, rangeIndex);
         } else {
           LOG.debug("Did set segment id `{}` to slot {}", segmentId, rangeIndex);
-          scheduleRetry
-              = repairSegment(rangeIndex, nextRepairSegment.get().getId(), nextRepairSegment.get().getTokenRange());
+          scheduleRetry = repairSegment(
+                  rangeIndex,
+                  nextRepairSegment.get().getId(),
+                  nextRepairSegment.get().getTokenRange());
           if (!scheduleRetry) {
             break;
           }
+          segmentsTotal = context.storage.getSegmentAmountForRepairRun(repairRunId);
           repairStarted = true;
         }
       }
     }
 
     if (!repairStarted && !anythingRunningStill) {
-      int segmentsDone = context.storage.getSegmentAmountForRepairRunWithState(repairRunId, RepairSegment.State.DONE);
-      int segmentsTotal = context.storage.getSegmentAmountForRepairRun(repairRunId);
+      segmentsDone = context.storage.getSegmentAmountForRepairRunWithState(repairRunId, RepairSegment.State.DONE);
+      segmentsTotal = context.storage.getSegmentAmountForRepairRun(repairRunId);
 
       LOG.info("Repair amount done {}", segmentsDone);
-      repairProgress = (float) segmentsDone / segmentsTotal;
+      repairProgress = segmentsDone / segmentsTotal;
 
       if (segmentsDone == segmentsTotal) {
         endRepairRun();
         scheduleRetry = false;
       }
+    } else {
+      segmentsDone = context.storage.getSegmentAmountForRepairRunWithState(repairRunId, RepairSegment.State.DONE);
     }
 
     if (scheduleRetry) {
@@ -318,10 +401,10 @@ final class RepairRunner implements Runnable {
    * Start the repair of a segment.
    *
    * @param segmentId id of the segment to repair.
-   * @param tokenRange token range of the segment to repair.
+   * @param segment token range of the segment to repair.
    * @return Boolean indicating whether rescheduling next run is needed.
    */
-  private boolean repairSegment(final int rangeIndex, final UUID segmentId, RingRange tokenRange)
+  private boolean repairSegment(final int rangeIndex, final UUID segmentId, Segment segment)
       throws InterruptedException {
 
     final UUID unitId;
@@ -337,7 +420,7 @@ final class RepairRunner implements Runnable {
       repairProgress = (float) amountDone / repairRun.getSegmentCount();
     }
 
-    RepairUnit repairUnit = context.storage.getRepairUnit(unitId).get();
+    RepairUnit repairUnit = context.storage.getRepairUnit(unitId);
     String keyspace = repairUnit.getKeyspaceName();
     LOG.debug("preparing to repair segment {} on run with id {}", segmentId, repairRunId);
 
@@ -354,13 +437,18 @@ final class RepairRunner implements Runnable {
       // full repair
       try {
         potentialCoordinators = filterPotentialCoordinatorsByDatacenters(
-            repairUnit.getDatacenters(), jmxConnection.tokenRangeToEndpoint(keyspace, tokenRange), jmxConnection);
+                repairUnit.getDatacenters(),
+                jmxConnection.tokenRangeToEndpoint(keyspace, segment),
+                jmxConnection);
       } catch (RuntimeException e) {
         LOG.warn("Couldn't get token ranges from coordinator: #{}", e);
         return true;
       }
       if (potentialCoordinators.isEmpty()) {
-        LOG.warn("Segment #{} is faulty, no potential coordinators for range: {}", segmentId, tokenRange.toString());
+        LOG.warn(
+            "Segment #{} is faulty, no potential coordinators for range: {}",
+            segmentId,
+            segment.toString());
         // This segment has a faulty token range. Abort the entire repair run.
         synchronized (this) {
           RepairRun repairRun = context.storage.getRepairRun(repairRunId).get();
@@ -368,7 +456,7 @@ final class RepairRunner implements Runnable {
               repairRun
                   .with()
                   .runState(RepairRun.RunState.ERROR)
-                  .lastEvent(String.format("No coordinators for range %s", tokenRange))
+                  .lastEvent(String.format("No coordinators for range %s", segment))
                   .endTime(DateTime.now())
                   .build(repairRunId));
           killAndCleanupRunner();
@@ -439,7 +527,7 @@ final class RepairRunner implements Runnable {
   }
 
   private static Pair<String, String> getNodeDatacenterPair(String node, JmxProxy jmxProxy) {
-    Pair<String, String> result = Pair.of(node, jmxProxy.getDataCenter(node));
+    Pair<String, String> result = Pair.of(node, EndpointSnitchInfoProxy.create(jmxProxy).getDataCenter(node));
     LOG.debug("[getNodeDatacenterPair] node/datacenter association {}", result);
     return result;
   }
@@ -490,11 +578,13 @@ final class RepairRunner implements Runnable {
 
   void killAndCleanupRunner() {
     context.repairManager.removeRunner(this);
-    if (jmxConnection != null) {
-      jmxConnection.close();
-      jmxConnection = null;
-    }
     Thread.currentThread().interrupt();
+  }
+
+  private String metricName(String metric, String clusterName, String keyspaceName, UUID repairRunId) {
+    String cleanClusterName = clusterName.replaceAll("[^A-Za-z0-9]", "");
+    String cleanRepairRunId = repairRunId.toString().replaceAll("-", "");
+    return MetricRegistry.name(RepairRunner.class, metric, cleanClusterName, keyspaceName, cleanRepairRunId);
   }
 
   private String metricName(String metric, String clusterName, UUID repairRunId) {

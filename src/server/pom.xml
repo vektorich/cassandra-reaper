@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2014-2017 Spotify AB
+        Copyright 2016-2018 The Last Pickle Ltd
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
@@ -6,7 +21,7 @@
     <parent>
         <groupId>io.cassandrareaper</groupId>
         <artifactId>cassandra-reaper-pom</artifactId>
-        <version>1.1.0-SNAPSHOT</version>
+        <version>1.4.0-waze</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
     <name>Cassandra Reaper server</name>
@@ -14,12 +29,7 @@
     <packaging>jar</packaging>
 
     <properties>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <dropwizard.version>1.0.8</dropwizard.version>
-        <dropwizard.cassandra.version>4.1.0</dropwizard.cassandra.version>
-        <dropwizard.metrics.datadog.version>1.0.6</dropwizard.metrics.datadog.version>
-        <cassandra.version>2.2.7</cassandra.version>
-        <cucumber.version>1.2.5</cucumber.version>
+        <dropwizard.version>1.1.7</dropwizard.version>
         <docker.directory>src/main/docker</docker.directory>
         <timestamp>${maven.build.timestamp}</timestamp>
         <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss</maven.build.timestamp.format>
@@ -30,27 +40,27 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>19.0</version>
+            <version>20.0</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-core</artifactId>
-            <version>1.2.2</version>
+            <version>1.2.3</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-access</artifactId>
-            <version>1.2.2</version>
+            <version>1.2.3</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.2.2</version>
+            <version>1.2.3</version>
         </dependency>
         <dependency>
             <groupId>javax.mail</groupId>
             <artifactId>javax.mail-api</artifactId>
-            <version>1.5.6</version>
+            <version>1.6.1</version>
         </dependency>
         <dependency>
             <groupId>io.dropwizard</groupId>
@@ -68,19 +78,19 @@
             <version>${dropwizard.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.coursera</groupId>
-            <artifactId>dropwizard-metrics-datadog</artifactId>
-            <version>${dropwizard.metrics.datadog.version}</version>
-        </dependency>
-        <dependency>
             <groupId>io.dropwizard</groupId>
             <artifactId>dropwizard-assets</artifactId>
             <version>${dropwizard.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.coursera</groupId>
+            <artifactId>dropwizard-metrics-datadog</artifactId>
+            <version>1.1.13</version>
+        </dependency>
+        <dependency>
             <groupId>systems.composable</groupId>
             <artifactId>dropwizard-cassandra</artifactId>
-            <version>${dropwizard.cassandra.version}</version>
+            <version>4.1.0</version>
             <exclusions>
                 <exclusion>
                     <groupId>com.google.guava</groupId>
@@ -91,7 +101,7 @@
         <dependency>
             <groupId>org.apache.cassandra</groupId>
             <artifactId>cassandra-all</artifactId>
-            <version>${cassandra.version}</version>
+            <version>2.2.12</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
@@ -110,50 +120,81 @@
         <dependency>
             <groupId>com.datastax.cassandra</groupId>
             <artifactId>cassandra-driver-core</artifactId>
-            <version>3.1.4</version>
+            <version>3.5.0</version>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>9.3-1100-jdbc41</version>
+            <version>42.2.2.jre7</version>
         </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <version>1.4.186</version>
+            <version>1.4.197</version>
         </dependency>
         <dependency>
             <groupId>org.cognitor.cassandra</groupId>
             <artifactId>cassandra-migration</artifactId>
-            <version>2.0.0</version>
+            <version>2.1.2</version>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
-            <version>4.0.3</version>
+            <version>5.1.0</version>
         </dependency>
         <dependency>
             <groupId>io.prometheus</groupId>
             <artifactId>simpleclient</artifactId>
-            <version>0.0.25</version>
+            <version>0.4.0</version>
         </dependency>
         <dependency>
             <groupId>io.prometheus</groupId>
             <artifactId>simpleclient_servlet</artifactId>
-            <version>0.0.25</version>
+            <version>0.4.0</version>
         </dependency>
         <dependency>
             <groupId>io.prometheus</groupId>
             <artifactId>simpleclient_dropwizard</artifactId>
-            <version>0.0.25</version>
+            <version>0.4.0</version>
         </dependency>
-
+        <dependency>
+            <groupId>org.secnod.dropwizard</groupId>
+            <artifactId>dropwizard-shiro</artifactId>
+            <version>0.2.0</version>
+        </dependency>
+        <dependency>
+            <!-- fixes bug around duplicate requests
+              - https://stackoverflow.com/questions/37956741/jersey-resource-receiving-duplicate-requests-from-jersey-client#39377403
+             -->
+            <groupId>org.glassfish.jersey.core</groupId>
+            <artifactId>jersey-client</artifactId>
+            <version>2.25.1</version>
+        </dependency>
+        <dependency>
+            <!-- required to solve dropwizard 1.1.7 & jersery-client 2.25.1 dependency issues -->
+            <groupId>org.glassfish.jersey.core</groupId>
+            <artifactId>jersey-server</artifactId>
+            <version>2.25.1</version>
+        </dependency>
+        <dependency>
+            <!-- required to solve dropwizard 1.1.7 & jersery-client 2.25.1 dependency issues -->
+          <groupId>org.glassfish.jersey.bundles.repackaged</groupId>
+          <artifactId>jersey-guava</artifactId>
+          <version>2.25.1</version>
+        </dependency>
+        <dependency>
+            <!-- required to solve dropwizard 1.1.7 & jersery-client 2.25.1 dependency issues -->
+            <groupId>org.glassfish.hk2</groupId>
+            <artifactId>hk2-api</artifactId>
+            <version>2.5.0-b61</version>
+        </dependency>
+        
         <!--test scope -->
 
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.11</version>
+            <version>4.12</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -175,25 +216,25 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>2.10.0</version>
+            <version>2.18.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>info.cukes</groupId>
             <artifactId>cucumber-java</artifactId>
-            <version>${cucumber.version}</version>
+            <version>1.2.5</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>info.cukes</groupId>
             <artifactId>cucumber-junit</artifactId>
-            <version>${cucumber.version}</version>
+            <version>1.2.5</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.awaitility</groupId>
             <artifactId>awaitility</artifactId>
-            <version>2.0.0</version>
+            <version>3.1.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -202,22 +243,25 @@
             <version>2.0M10</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <!-- fixes bug around duplicate requests
-              - https://stackoverflow.com/questions/37956741/jersey-resource-receiving-duplicate-requests-from-jersey-client#39377403
-             -->
-            <groupId>org.glassfish.jersey.core</groupId>
-            <artifactId>jersey-client</artifactId>
-            <version>2.25.1</version>
-        </dependency>
     </dependencies>
 
     <build>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>buildnumber-maven-plugin</artifactId>
-                <version>1.4</version>
                 <executions>
                     <execution>
                         <phase>validate</phase>
@@ -235,10 +279,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.7.0</version>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <source>${version.jdk}</source>
+                    <target>${version.jdk}</target>
+                    <encoding>${project.build.sourceEncoding}</encoding>
                     <optimize>true</optimize>
                     <debug>true</debug>
                     <compilerId>javac-with-errorprone</compilerId>
@@ -250,12 +294,12 @@
                     <dependency>
                         <groupId>org.codehaus.plexus</groupId>
                         <artifactId>plexus-compiler-javac-errorprone</artifactId>
-                        <version>2.8.2</version>
+                        <version>2.8.4</version>
                     </dependency>
                     <dependency>
                         <groupId>com.google.errorprone</groupId>
                         <artifactId>error_prone_core</artifactId>
-                        <version>2.1.1</version>
+                        <version>2.3.1</version>
                     </dependency>
                 </dependencies>
             </plugin>
@@ -263,7 +307,6 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>animal-sniffer-maven-plugin</artifactId>
-                <version>1.16</version>
                 <configuration>
                     <signature>
                         <groupId>org.codehaus.mojo.signature</groupId>
@@ -281,31 +324,7 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <version>2.20</version>
-                <executions>
-                  <execution>
-                    <id>integration-tests</id>
-                    <goals>
-                      <goal>integration-test</goal>
-                      <goal>verify</goal>
-                    </goals>
-                    <configuration>
-                      <skipTests>true</skipTests>
-                      <argLine>${failsafeArgLine}</argLine>
-                      <failIfNoTests>false</failIfNoTests>
-                      <includes>
-                        <include>**/AddClusterIT.java</include>
-                        <include>**/ReaperIT.java</include>
-                      </includes>
-                    </configuration>
-                  </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.0.2</version>
                 <configuration>
                     <archive>
                         <manifest>
@@ -316,13 +335,13 @@
                 </configuration>
             </plugin>
             <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
               <artifactId>maven-source-plugin</artifactId>
-              <version>3.0.1</version>
               <executions>
                 <execution>
                   <id>attach-sources</id>
                   <goals>
-                    <goal>jar</goal>
+                    <goal>jar-no-fork</goal>
                   </goals>
                 </execution>
               </executions>
@@ -331,7 +350,6 @@
                 <!-- Creating a fat jar by including all classes required for running the app -->
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.0.0</version>
                 <configuration>
                     <createDependencyReducedPom>true</createDependencyReducedPom>
                     <filters>
@@ -367,7 +385,6 @@
             <plugin>
                 <groupId>com.spotify</groupId>
                 <artifactId>docker-maven-plugin</artifactId>
-                <version>1.0.0</version>
                 <configuration>
                     <imageName>cassandra-reaper</imageName>
                     <dockerDirectory>${docker.directory}</dockerDirectory>
@@ -386,7 +403,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>
-                <version>2.17</version>
                 <executions>
                     <execution>
                         <id>validate</id>
@@ -406,125 +422,165 @@
                     </execution>
                 </executions>
             </plugin>
+              <!-- following plugins are for building the UI -->
+              <plugin>
+                <artifactId>maven-clean-plugin</artifactId>
+                <configuration>
+                  <filesets>
+                    <fileset>
+                      <directory>${project.build.directory}</directory>
+                    </fileset>
+                    <fileset>
+                      <directory>../ui/build</directory>
+                    </fileset>
+                    <fileset>
+                      <directory>../ui/bower_components</directory>
+                    </fileset>
+                    <fileset>
+                      <directory>../ui/node_modules</directory>
+                    </fileset>
+                  </filesets>
+                </configuration>
+              </plugin>
+            <plugin>
+                <groupId>com.google.code.maven-replacer-plugin</groupId>
+                <artifactId>replacer</artifactId>
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>replace</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <file>${project.parent.basedir}/src/ui/app/navbar.template.jsx</file>
+                    <outputFile>${project.parent.basedir}/src/ui/app/jsx/navbar.jsx</outputFile>
+                    <replacements>
+                        <replacement>
+                             <token>##VERSION##</token>
+                            <value>${project.version}</value>
+                        </replacement>
+                        <replacement>
+                            <token>##GIT-SHA##</token>
+                            <value>${buildNumber}</value>
+                        </replacement>
+                         <replacement>
+                            <token>##BUILD-DATE##</token>
+                            <value>${timestamp}</value>
+                        </replacement>
+                    </replacements>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>exec-npm-install</id>
+                        <phase>generate-sources</phase>
+                        <configuration>
+                            <executable>npm</executable>
+                            <workingDirectory>../ui</workingDirectory>
+                            <arguments>
+                                <argument>install</argument>
+                            </arguments>
+                        </configuration>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>exec-bower-install</id>
+                        <phase>generate-sources</phase>
+                        <configuration>
+                            <executable>bower</executable>
+                            <workingDirectory>../ui</workingDirectory>
+                            <arguments>
+                                <argument>--allow-root</argument>
+                                <argument>install</argument>
+                            </arguments>
+                        </configuration>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>exec-npm-run</id>
+                        <phase>generate-sources</phase>
+                        <configuration>
+                            <executable>npm</executable>
+                            <workingDirectory>../ui</workingDirectory>
+                            <arguments>
+                                <argument>run</argument>
+                                <argument>minimize</argument>
+                            </arguments>
+                        </configuration>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                  <execution>
+                    <id>copy-ui-resources</id>
+                    <phase>process-resources</phase>
+                    <goals>
+                      <goal>copy-resources</goal>
+                    </goals>
+                    <configuration>
+                      <outputDirectory>${basedir}/target/classes/assets</outputDirectory>
+                      <resources>
+                        <resource>
+                          <directory>../ui/build</directory>
+                        </resource>
+                      </resources>
+                    </configuration>
+                  </execution>
+                </executions>
+            </plugin>
+          <plugin>
+            <groupId>org.apache.rat</groupId>
+            <artifactId>apache-rat-plugin</artifactId>
+            <configuration>
+              <skip>true</skip>
+            </configuration>
+          </plugin>
         </plugins>
     </build>
-
     <profiles>
-        <profile>
-            <id>build-ui</id>
-            <activation>
-                <activeByDefault>false</activeByDefault>
-            </activation>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>com.google.code.maven-replacer-plugin</groupId>
-                        <artifactId>replacer</artifactId>
-                        <version>1.5.3</version>
-                        <executions>
-                            <execution>
-                                <phase>generate-sources</phase>
-                                <goals>
-                                    <goal>replace</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <file>${project.parent.basedir}/src/ui/app/navbar.template.jsx</file>
-                            <outputFile>${project.parent.basedir}/src/ui/app/jsx/navbar.jsx</outputFile>
-                            <replacements>
-                                <replacement>
-                                     <token>##VERSION##</token>
-                                    <value>${project.version}</value>
-                                </replacement>
-                                <replacement>
-                                    <token>##GIT-SHA##</token>
-                                    <value>${buildNumber}</value>
-                                </replacement>
-                                 <replacement>
-                                    <token>##BUILD-DATE##</token>
-                                    <value>${timestamp}</value>
-                                </replacement>
-                            </replacements>
-                        </configuration>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.codehaus.mojo</groupId>
-                        <artifactId>exec-maven-plugin</artifactId>
-                        <version>1.6.0</version>
-                        <executions>
-                            <execution>
-                                <id>exec-npm-install</id>
-                                <phase>generate-sources</phase>
-                                <configuration>
-                                    <executable>npm</executable>
-                                    <workingDirectory>../ui</workingDirectory>
-                                    <arguments>
-                                        <argument>install</argument>
-                                    </arguments>
-                                </configuration>
-                                <goals>
-                                    <goal>exec</goal>
-                                </goals>
-                            </execution>
-                            <execution>
-                                <id>exec-bower-install</id>
-                                <phase>generate-sources</phase>
-                                <configuration>
-                                    <executable>bower</executable>
-                                    <workingDirectory>../ui</workingDirectory>
-                                    <arguments>
-                                        <argument>--allow-root</argument>
-                                        <argument>install</argument>
-                                    </arguments>
-                                </configuration>
-                                <goals>
-                                    <goal>exec</goal>
-                                </goals>
-                            </execution>
-                            <execution>
-                                <id>exec-npm-run</id>
-                                <phase>generate-sources</phase>
-                                <configuration>
-                                    <executable>npm</executable>
-                                    <workingDirectory>../ui</workingDirectory>
-                                    <arguments>
-                                        <argument>run</argument>
-                                        <argument>minimize</argument>
-                                    </arguments>
-                                </configuration>
-                                <goals>
-                                    <goal>exec</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <artifactId>maven-resources-plugin</artifactId>
-                        <version>3.0.2</version>
-                        <executions>
-                          <execution>
-                            <id>copy-resources</id>
-                            <!-- here the phase you need -->
-                            <phase>generate-sources</phase>
-                            <goals>
-                              <goal>copy-resources</goal>
-                            </goals>
-                            <configuration>
-                              <outputDirectory>src/main/resources/assets</outputDirectory>
-                              <resources>
-                                <resource>
-                                  <directory>../ui/build</directory>
-                                  <filtering>false</filtering>
-                                </resource>
-                              </resources>
-                            </configuration>
-                          </execution>
-                        </executions>
-                      </plugin>
-                </plugins>
-            </build>
-        </profile>
+      <profile>
+        <id>skip-tests-needing-all-nodes-reachable</id>
+        <build>
+          <plugins>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <inherited>true</inherited>
+                <configuration>
+                  <argLine>${surefireArgLine} -Dcucumber.options="-t ~@all_nodes_reachable"</argLine>
+                </configuration>
+            </plugin>
+          </plugins>
+        </build>
+      </profile>
+      <profile>
+        <id>only-tests-needing-all-nodes-reachable</id>
+        <build>
+          <plugins>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <inherited>true</inherited>
+                <configuration>
+                  <argLine>${surefireArgLine} -Dcucumber.options="-t @all_nodes_reachable"</argLine>
+                </configuration>
+            </plugin>
+          </plugins>
+        </build>
+      </profile>
     </profiles>
     <reporting>
         <plugins>

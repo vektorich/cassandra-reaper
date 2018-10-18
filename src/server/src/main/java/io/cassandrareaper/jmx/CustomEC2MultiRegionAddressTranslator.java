@@ -1,4 +1,7 @@
 /*
+ *
+ *
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -13,6 +16,8 @@
  */
 
 package io.cassandrareaper.jmx;
+
+import io.cassandrareaper.ReaperApplicationConfiguration;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -30,6 +35,7 @@ import javax.naming.directory.InitialDirContext;
 import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 
 /**
  * AddressTranslator implementation for a multi-region EC2 deployment <b>where clients are also deployed in EC2</b>.
@@ -54,12 +60,14 @@ public class CustomEC2MultiRegionAddressTranslator {
 
   private static final Logger LOG = LoggerFactory.getLogger(CustomEC2MultiRegionAddressTranslator.class);
   private final DirContext ctx;
-  private String addressTranslatorRemoveDomain;
+  private final ReaperApplicationConfiguration.AddressTranslatorConfiguration addressTranslatorConfiguration;
 
-  public CustomEC2MultiRegionAddressTranslator(String addressTranslatorRemoveDomain) throws NamingException {
+  public CustomEC2MultiRegionAddressTranslator(
+      ReaperApplicationConfiguration.AddressTranslatorConfiguration addressTranslatorConfiguration
+  ) throws NamingException {
     Hashtable<Object, Object> env = new Hashtable<Object, Object>();
     env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.dns.DnsContextFactory");
-    this.addressTranslatorRemoveDomain = addressTranslatorRemoveDomain;
+    this.addressTranslatorConfiguration = addressTranslatorConfiguration;
 
     ctx = new InitialDirContext(env);
   }
@@ -103,18 +111,31 @@ public class CustomEC2MultiRegionAddressTranslator {
       // InetAddress#getHostName() is supposed to perform a reverse DNS lookup, but for some reason it doesn't work
       // within the same EC2 region (it returns the IP address itself).
       // We use an alternate implementation:
-      String domainName = lookupPtrRecord(reverse(address));
+
+      String domainName;
+      if (addressTranslatorConfiguration.appendInsteadOfReverse() != null) {
+        domainName = lookupPtrRecord(
+            address.getHostAddress() + addressTranslatorConfiguration.appendInsteadOfReverse());
+      } else {
+        domainName = lookupPtrRecord(reverse(address));
+      }
       if (domainName == null) {
         LOG.warn("Found no domain name for {}, returning it as-is", address);
         return socketAddress;
       }
 
       // Waze - remove .pub$ from domain name, by Sasha <sashagl@google.com>
-      if (addressTranslatorRemoveDomain != null) {
-        int sufIndex = domainName.lastIndexOf(addressTranslatorRemoveDomain);
+
+      if (addressTranslatorConfiguration.removeDomain() != null) {
+        int sufIndex = domainName.lastIndexOf(addressTranslatorConfiguration.removeDomain());
         if (sufIndex > 0) {
           domainName = domainName.substring(0, sufIndex);
         }
+      }
+
+
+      if (addressTranslatorConfiguration.appendDomain() != null) {
+        domainName += addressTranslatorConfiguration.appendDomain();
       }
 
       InetAddress translatedAddress = InetAddress.getByName(domainName);
@@ -147,4 +168,5 @@ public class CustomEC2MultiRegionAddressTranslator {
       LOG.warn("Error closing translator", e);
     }
   }
+
 }

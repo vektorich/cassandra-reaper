@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,11 +19,42 @@ package io.cassandrareaper.jmx;
 
 import io.cassandrareaper.ReaperException;
 
+import javax.management.MBeanServerConnection;
+
+import com.google.common.base.Preconditions;
+import org.apache.cassandra.locator.EndpointSnitchInfoMBean;
+import org.apache.cassandra.service.StorageServiceMBean;
+import org.apache.cassandra.streaming.StreamManagerMBean;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import static org.junit.Assert.assertEquals;
 
 public final class JmxProxyTest {
+
+  public static JmxProxy mockJmxProxyImpl() {
+    return Mockito.mock(JmxProxyImpl.class);
+  }
+
+  public static void mockGetMBeanServerConnection(JmxProxy proxy, MBeanServerConnection serverConnection) {
+    Preconditions.checkArgument(proxy instanceof JmxProxyImpl, "only JmxProxyImpl is supported");
+    Mockito.when(((JmxProxyImpl)proxy).getMBeanServerConnection()).thenReturn(serverConnection);
+  }
+
+  public static void mockGetStorageServiceMBean(JmxProxy proxy, StorageServiceMBean storageMBean) {
+    Preconditions.checkArgument(proxy instanceof JmxProxyImpl, "only JmxProxyImpl is supported");
+    Mockito.when(((JmxProxyImpl)proxy).getStorageServiceMBean()).thenReturn(storageMBean);
+  }
+
+  public static void mockGetStreamManagerMBean(JmxProxy proxy, StreamManagerMBean streamingManagerMBean) {
+    Preconditions.checkArgument(proxy instanceof JmxProxyImpl, "only JmxProxyImpl is supported");
+    Mockito.when(((JmxProxyImpl)proxy).getStreamManagerMBean()).thenReturn(streamingManagerMBean);
+  }
+
+  public static void mockGetEndpointSnitchInfoMBean(JmxProxy proxy, EndpointSnitchInfoMBean endpointSnitchInfoMBean) {
+    Preconditions.checkArgument(proxy instanceof JmxProxyImpl, "only JmxProxyImpl is supported");
+    Mockito.when(((JmxProxyImpl)proxy).getEndpointSnitchInfoMBean()).thenReturn(endpointSnitchInfoMBean);
+  }
 
   @Test
   public void testVersionCompare() throws ReaperException {
@@ -32,10 +66,7 @@ public final class JmxProxyTest {
     assertEquals(Integer.valueOf(1), JmxProxyImpl.versionCompare("99.0.0", "9.0"));
     assertEquals(Integer.valueOf(1), JmxProxyImpl.versionCompare("99.0.10", "99.0.1"));
     assertEquals(Integer.valueOf(-1), JmxProxyImpl.versionCompare("99.0.10~1", "99.0.10~2"));
-
-    assertEquals(
-        Integer.valueOf(0),
-        JmxProxyImpl.versionCompare("1.2.18-1~1.2.15.219.gec18fb4.9", "1.2.18-1~1.2.15.219.gec17fb4.10"));
+    assertEquals(Integer.valueOf(-1), JmxProxyImpl.versionCompare("2.0.17", "2.1.1"));
   }
 
 }

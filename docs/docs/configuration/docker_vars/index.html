@@ -13,13 +13,13 @@
 
   
 
-  <meta name="generator" content="Hugo 0.26" />
+  <meta name="generator" content="Hugo 0.40.3" />
 
   <link href='//fonts.googleapis.com/css?family=Roboto:400,100,100italic,300,300italic,500,700,800' rel='stylesheet' type='text/css'>
 
   
-  <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
-  <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+  <link href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" integrity="sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN" crossorigin="anonymous">
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
 
   
   <link href="http://cassandra-reaper.io/css/animate.css" rel="stylesheet">
@@ -151,7 +151,6 @@
     <div class="container">
         <div class="row">
             <div class="col-md-12">
-                <h1></h1>
             </div>
         </div>
     </div>
@@ -186,6 +185,15 @@
         
     </ul>
     
+    </li>
+    
+    
+    <li>
+        <a href="/docs/concepts/">
+            
+            <span>Core Concepts</span>
+        </a>
+        
     </li>
     
     
@@ -233,22 +241,40 @@
     
 
     <li class="sub-menu">
-    <a href="/docs/usage/" class="">
+    <a href="/docs/metrics/" class="">
         
-        <span>Usage</span>
+        <span>Metrics</span>
         <span class="menu-arrow arrow_carrot-right"></span>
     </a>
     <ul class="sub">
         
-        <li><a href="/docs/usage/add_cluster/"> Add a Cluster </a> </li>
+        <li><a href="/docs/metrics/graphite/"> Graphite Reporter </a> </li>
         
-        <li><a href="/docs/usage/health/"> Check Cluster Health </a> </li>
+    </ul>
+    
+    </li>
+    
+    
+
+    <li class="sub-menu">
+    <a href="/docs/usage/" class="">
         
-        <li><a href="/docs/usage/single/"> Running a Repair </a> </li>
+        <span>Using Reaper</span>
+        <span class="menu-arrow arrow_carrot-right"></span>
+    </a>
+    <ul class="sub">
         
-        <li><a href="/docs/usage/schedule/"> Scheduling Repairs </a> </li>
+        <li><a href="/docs/usage/add_cluster/"> Adding a Cluster </a> </li>
         
-        <li><a href="/docs/usage/multi_dc/"> Multi DC </a> </li>
+        <li><a href="/docs/usage/health/"> Checking a Cluster&#39;s Health </a> </li>
+        
+        <li><a href="/docs/usage/single/"> Running a Cluster Repair </a> </li>
+        
+        <li><a href="/docs/usage/schedule/"> Scheduling a Cluster Repair </a> </li>
+        
+        <li><a href="/docs/usage/multi_dc/"> Operating with a Multi DC Cluster </a> </li>
+        
+        <li><a href="/docs/usage/authentication/"> Activating Web UI Authentication </a> </li>
         
     </ul>
     
@@ -290,9 +316,9 @@
 <table>
 <thead>
 <tr>
-<th>Environment Variable</th>
-<th>Configuration Setting</th>
-<th>Default Value</th>
+<th><h4>Environment Variable</h4></th>
+<th><h4>Configuration Setting</h4></th>
+<th><h4>Default Value</h4></th>
 </tr>
 </thead>
 
@@ -388,9 +414,15 @@
 </tr>
 
 <tr>
-<td><code class="codeLarge">REAPER_LOGGING_APPENDERS_LOG_FORMAT</code></td>
+<td><code class="codeLarge">REAPER_LOGGING_APPENDERS_CONSOLE_LOG_FORMAT</code></td>
 <td><a href="/docs/configuration/reaper_specific/#logformat">logFormat</a></td>
 <td>&rdquo;%-6level [%d] [%t] %logger{5} - %msg %n&rdquo;</td>
+</tr>
+
+<tr>
+<td><code class="codeLarge">REAPER_LOGGING_APPENDERS_CONSOLE_THRESHOLD</code></td>
+<td><a href="/docs/configuration/reaper_specific/#threshold">threshold</a></td>
+<td>WARN</td>
 </tr>
 
 <tr>
@@ -500,8 +532,8 @@
 <table>
 <thead>
 <tr>
-<th>Pre Reaper 1.0</th>
-<th>Post Reaper 1.0</th>
+<th><h4>Pre Reaper 1.0</h4></th>
+<th><h4>Post Reaper 1.0</h4></th>
 </tr>
 </thead>
 
@@ -558,7 +590,7 @@
 
 <tr>
 <td><code>REAPER_LOGGING_FORMAT</code></td>
-<td><code>REAPER_LOGGING_APPENDERS_LOG_FORMAT</code></td>
+<td><code>REAPER_LOGGING_APPENDERS_CONSOLE_LOG_FORMAT</code></td>
 </tr>
 
 <tr>
@@ -602,6 +634,26 @@
 
 <p>Allows the sending of Reaper metrics to a metrics reporting system such as Graphite. If enabled, the other associated environment variables <code>REAPER_METRICS_FREQUENCY</code> and <code>REAPER_METRICS_REPORTERS</code> must be set to appropriate values in order for metrics reporting to function correctly.</p>
 
+<h2 id="metrics-reporter-definition-syntax">Metrics reporter definition syntax</h2>
+
+<h4 id="reaper-metrics-reporters"><code>REAPER_METRICS_REPORTERS</code></h4>
+
+<p>Type: <em>List</em></p>
+
+<p>Default: <em>[]</em></p>
+
+<p>Defines the metrics reporters, using a JSON syntax instead of a YAML one.
+To activate graphite metrics reporting, run the container with the following sample arguments :</p>
+
+<pre><code>docker run \
+    -p 8080:8080 \
+    -p 8081:8081 \
+    -e &quot;REAPER_METRICS_ENABLED=true&quot; \
+    -e &quot;REAPER_METRICS_FREQUENCY=10 second&quot; \
+    -e &quot;REAPER_METRICS_REPORTERS=[{type: graphite, host: my.graphite.host.com, port: 2003, prefix: my.prefix}]&quot; \
+    thelastpickle/cassandra-reaper:master
+</code></pre>
+
 <h2 id="direct-mapping-to-cassandra-backend-specific-configuration-settings">Direct Mapping to Cassandra Backend Specific Configuration Settings</h2>
 
 <p>The Docker environment variables listed in this section map directly to Cassandra backend specific settings in the <em>cassandra-reaper.yaml</em> configuration file. The following table below lists the Docker environment variables, their associated Cassandra backend specific setting in the <em>cassandra-reaper.yaml</em> configuration file, and the default value assigned by the Docker container (if any). Definitions for each Docker environment variable can be found via the link to the associated setting.</p>
@@ -613,9 +665,9 @@
 <table>
 <thead>
 <tr>
-<th>Environment Variable</th>
-<th>Configuration Setting</th>
-<th>Default Value</th>
+<th><h4>Environment Variable</h4></th>
+<th><h4>Configuration Setting</h4></th>
+<th><h4>Default Value</h4></th>
 </tr>
 </thead>
 
@@ -635,6 +687,12 @@
 <tr>
 <td><code class="codeLarge">REAPER_CASS_CONTACT_POINTS</code></td>
 <td><a href="/docs/configuration/backend_specific/#contactpoints">contactPoints</a></td>
+<td>[]</td>
+</tr>
+
+<tr>
+<td><code class="codeLarge">REAPER_CASS_PORT</code></td>
+<td><a href="/docs/configuration/backend_specific/#port">port</a></td>
 <td>[]</td>
 </tr>
 
@@ -673,8 +731,8 @@
 <table>
 <thead>
 <tr>
-<th>Pre Reaper 1.0</th>
-<th>Post Reaper 1.0</th>
+<th><h4>Pre Reaper 1.0</h4></th>
+<th><h4>Post Reaper 1.0</h4></th>
 </tr>
 </thead>
 
@@ -693,9 +751,9 @@
 <table>
 <thead>
 <tr>
-<th>Environment Variable</th>
-<th>Previous Default</th>
-<th>New Default</th>
+<th><h4>Environment Variable</h4></th>
+<th><h4>Previous Default</h4></th>
+<th><h4>New Default</h4></th>
 </tr>
 </thead>
 
@@ -741,9 +799,9 @@
 <table>
 <thead>
 <tr>
-<th>Environment Variable</th>
-<th>Configuration Setting</th>
-<th>Default Value</th>
+<th><h4>Environment Variable</h4></th>
+<th><h4>Configuration Setting</h4></th>
+<th><h4>Default Value</h4></th>
 </tr>
 </thead>
 
@@ -777,8 +835,8 @@
 <table>
 <thead>
 <tr>
-<th>Pre Reaper 1.0</th>
-<th>Post Reaper 1.0</th>
+<th><h4>Pre Reaper 1.0</h4></th>
+<th><h4>Post Reaper 1.0</h4></th>
 </tr>
 </thead>
 
@@ -863,7 +921,7 @@ ga('send', 'pageview');
 
 <script src="/js/jquery-3.2.1.min.js"></script>
 
-<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
 
 <script src="//cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
 <script src="//cdnjs.cloudflare.com/ajax/libs/waypoints/4.0.1/jquery.waypoints.min.js"></script>

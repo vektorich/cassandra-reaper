@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -39,9 +42,10 @@ import static org.awaitility.Awaitility.await;
 
 @RunWith(Cucumber.class)
 @CucumberOptions(
-    features = "classpath:io.cassandrareaper.acceptance/integration_reaper_functionality.feature"
+    features = "classpath:io.cassandrareaper.acceptance/integration_reaper_functionality.feature",
+    plugin = {"pretty"}
     )
-public final class ReaperCassandraIT {
+public class ReaperCassandraIT {
 
   private static final Logger LOG = LoggerFactory.getLogger(ReaperCassandraIT.class);
   private static final List<ReaperTestJettyRunner> RUNNER_INSTANCES = new CopyOnWriteArrayList<>();
@@ -49,7 +53,7 @@ public final class ReaperCassandraIT {
   private static final Random RAND = new Random(System.nanoTime());
   private static Thread GRIM_REAPER;
 
-  private ReaperCassandraIT() {}
+  protected ReaperCassandraIT() {}
 
   @BeforeClass
   public static void setUp() throws Exception {

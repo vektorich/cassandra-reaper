@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -18,9 +21,9 @@ import io.cassandrareaper.core.NodeMetrics;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-import com.google.common.base.Optional;
 
 /**
  * Definition for a storage that can run in distributed (peer-to-peer) mode. For example Cassandra.
@@ -34,6 +37,8 @@ public interface IDistributedStorage {
   List<UUID> getLeaders();
 
   void releaseLead(UUID leaderId);
+
+  void forceReleaseLead(UUID leaderId);
 
   int countRunningReapers();
 

@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -17,6 +20,7 @@ package io.cassandrareaper.service;
 import io.cassandrareaper.AppContext;
 import io.cassandrareaper.ReaperApplicationConfiguration;
 import io.cassandrareaper.ReaperException;
+import io.cassandrareaper.core.Node;
 import io.cassandrareaper.core.NodeMetrics;
 import io.cassandrareaper.jmx.JmxProxy;
 import io.cassandrareaper.storage.IDistributedStorage;
@@ -26,6 +30,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+
 import javax.management.JMException;
 
 import com.codahale.metrics.Gauge;
@@ -113,10 +118,16 @@ final class Heart implements AutoCloseable {
                       .forEach(req -> {
 
                         LOG.info("Got metric request for node {} in {}", req.getNode(), req.getCluster());
-                        try (Timer.Context t1 = timer(context, req.getCluster(), req.getNode())) {
+                        try (Timer.Context t1 = timer(
+                            context,
+                            req.getCluster().replace('.', '-'),
+                            req.getNode().replace('.', '-'))) {
 
-                          try (JmxProxy nodeProxy
-                              = context.jmxConnectionFactory.connect(req.getNode(), jmxTimeoutSeconds)) {
+                          try {
+                            JmxProxy nodeProxy
+                                = context.jmxConnectionFactory.connect(
+                                   Node.builder().withClusterName(req.getCluster()).withHostname(req.getNode()).build(),
+                                   jmxTimeoutSeconds);
 
                             storage.storeNodeMetrics(
                                 runId,

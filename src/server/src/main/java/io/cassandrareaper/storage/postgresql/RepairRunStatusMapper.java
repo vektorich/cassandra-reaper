@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -37,8 +40,10 @@ public final class RepairRunStatusMapper implements ResultSetMapper<RepairRunSta
     long runId = rs.getLong("id");
     String clusterName = rs.getString("cluster_name");
     String keyspaceName = rs.getString("keyspace_name");
-    Collection<String> columnFamilies =
-        ImmutableSet.copyOf(getStringArray(rs.getArray("column_families").getArray()));
+
+    Collection<String> columnFamilies
+        = ImmutableSet.copyOf(getStringArray(rs.getArray("column_families").getArray()));
+
     int segmentsRepaired = rs.getInt("segments_repaired");
     int totalSegments = rs.getInt("segments_total");
     RepairRun.RunState state = RepairRun.RunState.valueOf(rs.getString("state"));
@@ -54,23 +59,24 @@ public final class RepairRunStatusMapper implements ResultSetMapper<RepairRunSta
     RepairParallelism repairParallelism = RepairParallelism.fromName(
         rs.getString("repair_parallelism").toLowerCase().replace("datacenter_aware", "dc_parallel"));
 
-    Collection<String> nodes =
-        ImmutableSet.copyOf(
+    Collection<String> nodes = ImmutableSet.copyOf(
             rs.getArray("nodes") == null
                 ? new String[] {}
                 : getStringArray(rs.getArray("nodes").getArray()));
-    Collection<String> datacenters =
-        ImmutableSet.copyOf(
+
+    Collection<String> datacenters = ImmutableSet.copyOf(
             getStringArray(
                 rs.getArray("datacenters") == null
                     ? new String[] {}
                     : rs.getArray("datacenters").getArray()));
-    Collection<String> blacklistedTables =
-        ImmutableSet.copyOf(
+
+    Collection<String> blacklistedTables = ImmutableSet.copyOf(
             getStringArray(
                 rs.getArray("blacklisted_tables") == null
                     ? new String[] {}
                     : rs.getArray("blacklisted_tables").getArray()));
+
+    int repairThreadCount = rs.getInt("repair_thread_count");
 
     return new RepairRunStatus(
         UuidUtil.fromSequenceId(runId),
@@ -92,7 +98,8 @@ public final class RepairRunStatusMapper implements ResultSetMapper<RepairRunSta
         repairParallelism,
         nodes,
         datacenters,
-        blacklistedTables);
+        blacklistedTables,
+        repairThreadCount);
   }
 
   private String[] getStringArray(Object array) {

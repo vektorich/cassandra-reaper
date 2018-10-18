@@ -1,4 +1,7 @@
 /*
+ * Copyright 2015-2017 Spotify AB
+ * Copyright 2016-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,6 +17,11 @@
 
 package io.cassandrareaper;
 
+import io.cassandrareaper.core.DroppedMessages;
+import io.cassandrareaper.core.MetricsHistogram;
+import io.cassandrareaper.core.RepairSegment;
+import io.cassandrareaper.core.Snapshot;
+import io.cassandrareaper.core.ThreadPoolStat;
 import io.cassandrareaper.resources.view.RepairRunStatus;
 import io.cassandrareaper.resources.view.RepairScheduleStatus;
 
@@ -148,12 +156,32 @@ public final class SimpleReaperClient {
     return parseJSON(json, new TypeReference<Map<String, List<String>>>() {});
   }
 
+  public static List<RepairSegment> parseRepairSegmentsJSON(String json) {
+    return parseJSON(json, new TypeReference<List<RepairSegment>>() {});
+  }
+
   public List<RepairScheduleStatus> getRepairSchedulesForCluster(String clusterName) {
     Response response = doHttpCall("GET", reaperHost, reaperPort,
         "/repair_schedule/cluster/" + clusterName, EMPTY_PARAMS);
     assertEquals(200, response.getStatus());
     String responseData = response.readEntity(String.class);
     return parseRepairScheduleStatusListJSON(responseData);
+  }
+
+  public static Map<String, List<Snapshot>> parseSnapshotMapJSON(String json) {
+    return parseJSON(json, new TypeReference<Map<String, List<Snapshot>>>() {});
+  }
+
+  public static List<ThreadPoolStat> parseTpStatJSON(String json) {
+    return parseJSON(json, new TypeReference<List<ThreadPoolStat>>() {});
+  }
+
+  public static List<DroppedMessages> parseDroppedMessagesJSON(String json) {
+    return parseJSON(json, new TypeReference<List<DroppedMessages>>() {});
+  }
+
+  public static List<MetricsHistogram> parseClientRequestMetricsJSON(String json) {
+    return parseJSON(json, new TypeReference<List<MetricsHistogram>>() {});
   }
 
 }

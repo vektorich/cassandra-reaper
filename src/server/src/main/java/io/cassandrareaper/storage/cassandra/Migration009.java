@@ -1,4 +1,7 @@
 /*
+ * Copyright 2017-2017 Spotify AB
+ * Copyright 2017-2018 The Last Pickle Ltd
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -42,9 +45,8 @@ public final class Migration009 {
   public static void migrate(Session session) {
     LOG.warn("Removing NULLs in the repair_run table. This may take some minutes…");
 
-    Statement getRepairSegmentsPrepStmt =
-        new SimpleStatement(
-                "SELECT id,segment_id,segment_state,segment_start_time,segment_end_time FROM repair_run")
+    Statement getRepairSegmentsPrepStmt
+        = new SimpleStatement("SELECT id,segment_id,segment_state,segment_start_time,segment_end_time FROM repair_run")
             .setConsistencyLevel(ConsistencyLevel.QUORUM);
 
     PreparedStatement updateRepairSegmentPrepStmt = session

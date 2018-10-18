@@ -1,6 +1,21 @@
+# Copyright 2017-2017 Spotify AB
+# Copyright 2017-2018 The Last Pickle Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 # Cassandra Reaper Configuration for Acceptance Tests.
 #
-segmentCount: 200
+segmentCountPerNode: 16
 repairParallelism: SEQUENTIAL
 repairIntensity: 0.95
 scheduleDaysBetween: 7
@@ -10,7 +25,7 @@ storageType: cassandra
 incrementalRepair: false
 jmxConnectionTimeoutInSeconds: 300
 activateQueryLogger: true
-datacenterAvailability: EACH
+datacenterAvailability: LOCAL
 
 logging:
   level: WARN
@@ -37,6 +52,14 @@ jmxPorts:
   127.0.0.6: 7600
   127.0.0.7: 7700
   127.0.0.8: 7800
+  
+jmxCredentials:
+  "test cluster":
+    username: cassandra
+    password: cassandra
+  test:
+    username: cassandra
+    password: cassandrapassword
 
 # database section will be ignored if storageType is set to "cassandra"
 h2:
@@ -51,6 +74,14 @@ cassandra:
   socketOptions:
       connectTimeoutMillis: 20000
       readTimeoutMillis: 40000
+  loadBalancingPolicy:
+    type: tokenAware
+    shuffleReplicas: true
+    subPolicy:
+      type: dcAwareRoundRobin
+      localDC: dc1
+      usedHostsPerRemoteDC: 0
+      allowRemoteDCsForLocalConsistencyLevel: false
   poolingOptions:
       idleTimeout: 5s
       local:
@@ -58,9 +89,9 @@ cassandra:
         maxConnections: 4
         maxRequestsPerConnection: 16
       remote:
-        coreConnections: 1
-        maxConnections: 1
-        maxRequestsPerConnection: 4
+        coreConnections: 0
+        maxConnections: 0
+        maxRequestsPerConnection: 0
 
 metrics:
   frequency: 1 second
